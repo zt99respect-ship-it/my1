@@ -1,18 +1,28 @@
-name: Continuous Kick Stream
+name: Kick Auto Restreamer
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 * * * *'
+    - cron: '*/30 * * * *'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: kick-restream-group
+  cancel-in-progress: false
 
 jobs:
-  run-restream:
+  start-stream:
     runs-on: ubuntu-latest
+    timeout-minutes: 330
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Python
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
@@ -24,3 +34,11 @@ jobs:
 
       - name: Run Restream Script
         run: python main.py
+
+      - name: Auto Restart Workflow
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "[*] إعادة تشغيل الـ Workflow تلقائياً لضمان الاستمرارية 24/7..."
+          gh workflow run stream.yml

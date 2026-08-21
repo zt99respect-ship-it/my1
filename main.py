@@ -10,7 +10,7 @@ socket.setdefaulttimeout(15)
 
 # البيانات الخاصة بقناة drb7h وسيرفر Restream
 KICK_USERNAME = "1Mali"
-RESTREAM_KEY = "re_11725544_eventa752cf60ea2c4cecbd8820b54335d0aa"
+RESTREAM_KEY = "re_12215822_event12d2d60d5f814c68b3c0f0137cacab10"
 RESTREAM_RTMP = f"rtmp://live.restream.io/live/{RESTREAM_KEY}"
 
 IMG1_URL = "https://i.top4top.io/p_38841iil90.png"

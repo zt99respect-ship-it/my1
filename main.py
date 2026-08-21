@@ -9,7 +9,7 @@ import socket
 socket.setdefaulttimeout(15)
 
 # البيانات الخاصة بقناة drb7h وسيرفر Restream
-KICK_USERNAME = "drb7h"
+KICK_USERNAME = "1Mali"
 RESTREAM_KEY = "re_11725544_eventa752cf60ea2c4cecbd8820b54335d0aa"
 RESTREAM_RTMP = f"rtmp://live.restream.io/live/{RESTREAM_KEY}"
 

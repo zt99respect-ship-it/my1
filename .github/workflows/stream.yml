@@ -3,7 +3,7 @@ name: Kick Auto Restreamer
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '*/30 * * * *' # فحص احتياطي كل 30 دقيقة للتشغيل في حال التوقف
 
 permissions:
   actions: write
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   start-stream:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 330 # إنهاء الجلسة بعد 5 ساعات و30 دقيقة لإعادة التشغيل النظيف
 
     steps:
       - name: Checkout Code
@@ -36,9 +36,9 @@ jobs:
         run: python main.py
 
       - name: Auto Restart Workflow
-        if: always()
+        if: always() # يشتغل دائماً سواء نجح السكريبت أو توقف أو انتهى الوقت
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "[*] إعادة تشغيل الـ Workflow تلقائياً لضمان الاستمرارية 24/7..."
+          echo "[*] إعادة تشغيل الـ Workflow تلقائياً لضمان الاستمرارية..."
           gh workflow run stream.yml

@@ -8,17 +8,17 @@ import socket
 # ضبط مهلة الاتصال لمنع تعليق السكريبت عند انقطاع الشبكة
 socket.setdefaulttimeout(15)
 
-# البيانات الخاصة بقناة drb7h وسيرفر Restream
+# بيانات القناة وخدمة YouTube Live
 KICK_USERNAME = "HOOK"
-RESTREAM_KEY = "re_12215822_event12d2d60d5f814c68b3c0f0137cacab10"
-RESTREAM_RTMP = f"rtmp://live.restream.io/live/{RESTREAM_KEY}"
+YOUTUBE_STREAM_KEY = "re_12215822_event12d2d60d5f814c68b3c0f0137cacab10"
+DESTINATION_RTMP = f"rtmp://a.rtmp.youtube.com/live2/{YOUTUBE_STREAM_KEY}"
 
 IMG1_URL = "https://i.top4top.io/p_38841iil90.png"
 IMG2_URL = "https://a.top4top.io/p_3884w5h790.png"
 IMG1_LOCAL = "image1.png"
 IMG2_LOCAL = "image2.png"
 
-# حد أقصى للتشغيل: 5 ساعات (18,000 ثانية) للتناوب التلقائي في GitHub Actions
+# حد أقصى للتشغيل: 5 ساعات (18,000 ثانية) للتناوب في GitHub Actions
 MAX_RUN_TIME = 18000
 
 HEADERS = {
@@ -52,14 +52,17 @@ def get_kick_livestream_url(username):
 def start_restream(stream_url):
     filter_complex = (
         "[0:v]scale=1920:1080:flags=lanczos[main_scaled];"
-        "[1:v]scale=185:-1[img1_scaled];"
-        "[2:v]scale=185:-1[img2_scaled];"
+        "[1:v]scale=180:-1[img1_scaled];"
+        "[2:v]scale=180:-1[img2_scaled];"
         "[main_scaled][img1_scaled]overlay=(main_w-overlay_w)/2:main_h-overlay_h-10:enable='lt(mod(t,10),5)'[tmp];"
         "[tmp][img2_scaled]overlay=(main_w-overlay_w)/2:main_h-overlay_h-10:enable='gte(mod(t,10),5)'[v]"
     )
     
     ffmpeg_cmd = [
         'ffmpeg',
+        '-reconnect', '1',
+        '-reconnect_streamed', '1',
+        '-reconnect_delay_max', '5',
         '-re',
         '-i', stream_url,
         '-i', IMG1_LOCAL,
@@ -79,7 +82,7 @@ def start_restream(stream_url):
         '-b:a', '256k',
         '-ar', '48000',
         '-f', 'flv',
-        RESTREAM_RTMP
+        DESTINATION_RTMP
     ]
     try:
         subprocess.run(ffmpeg_cmd, check=False)
@@ -91,7 +94,7 @@ def main():
     download_image(IMG1_URL, IMG1_LOCAL)
     download_image(IMG2_URL, IMG2_LOCAL)
     
-    print(f"[*] بدء نظام المراقبة الدائم لقناة {KICK_USERNAME} والبث إلى Restream...")
+    print(f"[*] بدء نظام المراقبة الدائم لقناة {KICK_USERNAME} والبث إلى YouTube...")
     
     while True:
         if time.time() - start_time > MAX_RUN_TIME:
@@ -107,19 +110,20 @@ def main():
             playback_url = get_kick_livestream_url(KICK_USERNAME)
             
             if playback_url:
-                print("[+] البث يعمل الآن! بدء إعادة التوجيه التلقائي إلى Restream...")
+                print("[+] البث يعمل الآن! بدء إعادة التوجيه المباشر إلى YouTube...")
                 start_restream(playback_url)
-                print("[!] توقف البث أو انقطع الاتصال. إعادة المحاولة والمراقبة...")
+                print("[!] توقف البث أو انقطع الاتصال. الانتظار 10 ثوانٍ قبل التثبت مجدداً...")
+                time.sleep(10)
             else:
-                print("[-] القناة أوفلاين. إعادة الفحص خلال 10 ثوانٍ...")
+                print("[-] القناة أوفلاين. إعادة الفحص خلال 15 ثانية...")
+                time.sleep(15)
                 
         except KeyboardInterrupt:
             print("[!] تم إيقاف السكريبت يدوياً.")
             break
         except Exception as e:
             print(f"[!] حدث خطأ في النظام: {e}. إعادة التشغيل التلقائي خلال 10 ثوانٍ...")
-        
-        time.sleep(10)
+            time.sleep(10)
 
 if __name__ == "__main__":
     main()

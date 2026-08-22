@@ -9,7 +9,7 @@ import socket
 socket.setdefaulttimeout(15)
 
 # بيانات القناة وخدمة YouTube Live
-KICK_USERNAME = "NEFOXD"
+KICK_USERNAME = "DRB7H"
 YOUTUBE_STREAM_KEY = "p0ky-h9m9-cywd-wy8v-2yra"
 DESTINATION_RTMP = f"rtmp://a.rtmp.youtube.com/live2/{YOUTUBE_STREAM_KEY}"
 

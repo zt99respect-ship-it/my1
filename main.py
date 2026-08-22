@@ -10,7 +10,7 @@ socket.setdefaulttimeout(15)
 
 # بيانات القناة وخدمة YouTube Live
 KICK_USERNAME = "NEFOXD"
-YOUTUBE_STREAM_KEY = "re_12215822_event12d2d60d5f814c68b3c0f0137cacab10"
+YOUTUBE_STREAM_KEY = "p0ky-h9m9-cywd-wy8v-2yra"
 DESTINATION_RTMP = f"rtmp://a.rtmp.youtube.com/live2/{YOUTUBE_STREAM_KEY}"
 
 IMG1_URL = "https://i.top4top.io/p_38841iil90.png"

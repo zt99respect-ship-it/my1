@@ -51,7 +51,7 @@ def get_kick_livestream_url(username):
 
 def start_restream(stream_url):
     filter_complex = (
-        "[0:v]scale=1920:1080:flags=bicubic[main_scaled];"
+        "[0:v]scale=1920:1080:flags=bilinear[main_scaled];"
         "[1:v]scale=300:-1[img1_scaled];"
         "[2:v]scale=300:-1[img2_scaled];"
         "[main_scaled][img1_scaled]overlay=(main_w-overlay_w)/2:main_h-overlay_h-10:enable='lt(mod(t,10),5)'[tmp];"
@@ -72,18 +72,18 @@ def start_restream(stream_url):
         '-map', '0:a:0?',
         '-r', '60',
         '-c:v', 'libx264',
-        '-preset', 'fast',
+        '-preset', 'superfast',
         '-profile:v', 'high',
         '-level', '4.2',
-        '-b:v', '8500k',
-        '-maxrate', '8500k',
-        '-bufsize', '17000k',
+        '-b:v', '6000k',
+        '-maxrate', '6000k',
+        '-bufsize', '6000k',
         '-pix_fmt', 'yuv420p',
         '-g', '120',
-        '-bf', '2',
-        '-x264-params', 'nal-hrd=cbr:scenecut=0:aq-mode=2:aq-strength=1.0',
+        '-threads', '2',
+        '-x264-params', 'nal-hrd=cbr:scenecut=0',
         '-c:a', 'aac',
-        '-b:a', '192k',
+        '-b:a', '160k',
         '-ar', '48000',
         '-ac', '2',
         '-f', 'flv',

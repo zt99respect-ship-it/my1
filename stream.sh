@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==========================================
-# نظام المراقبة الذكية المحدث (بدون أخطاء وهمية)
+# نظام المراقبة الذكية مع إصلاح وترميز الصوت
 # ==========================================
 KICK_CHANNEL="${KICK_CHANNEL:-W1pey}"
 RESTREAM_KEY="${RESTREAM_KEY:-re_12215822_event12d2d60d5f814c68b3c0f0137cacab10}"
@@ -10,35 +10,43 @@ QUALITY="${STREAM_QUALITY:-best}"
 DEST="${STREAM_DEST:-restream}"
 
 echo "========================================"
-echo "🚀 تم تفعيل نظام المراقبة الذكية لقناة: $KICK_CHANNEL"
+echo "🚀 نظام المراقبة الذكية لقناة: $KICK_CHANNEL"
 echo "⏱️ يتم فحص حالة البث كل 30 ثانية تلقائياً..."
 echo "========================================"
 
 while true; do
-    # جلب الرابط والتحقق من أنه رابط حقيقي يبدأ بـ http فقط لتجنب الأخطاء الوهمية
+    # فحص رابط البث والتأكد أنه يبدأ بـ http لتجنب الأخطاء
     KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep "^http")
 
     if [ -n "$KICK_M3U8" ]; then
-        echo "✅ تم رصد بث مباشر يعمل الآن! جاري بدء النقل فوراً..."
+        echo "✅ تم رصد بث مباشر يعمل الآن! جاري بدء النقل مع تنقية الصوت..."
         
-        # تشغيل البث حسب الوجهة المختارة
+        # تشغيل البث مع إعادة ترميز الصوت (-c:a aac) لمنع التشويش والكهرباء
         if [ "$DEST" == "youtube" ]; then
             ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -map 0:v -map 0:a -c:v copy -c:a copy -b:a 192k \
+              -map 0:v -map 0:a \
+              -c:v copy \
+              -c:a aac -b:a 192k -ar 44100 \
               -flvflags no_duration_filesize -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
               
         elif [ "$DEST" == "restream" ]; then
             ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -map 0:v -map 0:a -c:v copy -c:a copy -b:a 192k \
+              -map 0:v -map 0:a \
+              -c:v copy \
+              -c:a aac -b:a 192k -ar 44100 \
               -flvflags no_duration_filesize -f flv "rtmp://live.restream.io/live/$RESTREAM_KEY"
               
         else
             ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -map 0:v -map 0:a -c:v copy -c:a copy -b:a 192k \
+              -map 0:v -map 0:a \
+              -c:v copy \
+              -c:a aac -b:a 192k -ar 44100 \
               -flvflags no_duration_filesize -f flv "rtmp://live.restream.io/live/$RESTREAM_KEY" &
               
             ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -map 0:v -map 0:a -c:v copy -c:a copy -b:a 192k \
+              -map 0:v -map 0:a \
+              -c:v copy \
+              -c:a aac -b:a 192k -ar 44100 \
               -flvflags no_duration_filesize -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
             wait
         fi
@@ -48,6 +56,6 @@ while true; do
         echo "⏳ الشخص غير متصل حالياً (Offline). جارٍ إعادة الفحص خلال 30 ثانية..."
     fi
 
-    # الانتظار 30 ثانية بهدوء قبل الفحص التالي
+    # الانتظار 30 ثانية قبل الفحص التالي
     sleep 30
 done

@@ -36,15 +36,14 @@ start_offline_screen() {
     if [ -z "$OFFLINE_PID" ]; then
         echo "⏳ الستريمر غير متصل. يتم الآن عرض شاشة (بانتظار البث)..."
         
-        # تم حل المشكلة هنا: تخزين الفلتر بشكل مستقل لمنع تداخل المسافات في نص "بانتظار البث المباشر"
         VF_FILTER="drawtext=fontfile=cairo.ttf:text='بانتظار البث المباشر...':fontcolor=white:fontsize=110:x=(w-text_w)/2:y=(h-text_h)/2+30*sin(t*2):alpha=0.6+0.4*sin(t*3),drawtext=fontfile=cairo.ttf:text='Waiting for Stream':fontcolor=gray:fontsize=50:x=(w-text_w)/2:y=(h-text_h)/2+150"
 
         if [ "$DEST" == "youtube" ]; then
-            ffmpeg -hide_banner -loglevel error -nostdin -re -f lavfi -i color=c=#0f172a:s=1920x1080:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo -vf "$VF_FILTER" -c:v libx264 -preset ultrafast -b:v 2000k -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -f flv "$OUT_YOUTUBE" &
+            ffmpeg -hide_banner -loglevel error -nostdin -re -f lavfi -i color=c=#0f172a:s=1920x1080:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo -vf "$VF_FILTER" -map 0:v -map 1:a -c:v libx264 -preset ultrafast -b:v 2000k -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -f flv "$OUT_YOUTUBE" &
         elif [ "$DEST" == "restream" ]; then
-            ffmpeg -hide_banner -loglevel error -nostdin -re -f lavfi -i color=c=#0f172a:s=1920x1080:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo -vf "$VF_FILTER" -c:v libx264 -preset ultrafast -b:v 2000k -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -f flv "$OUT_RESTREAM" &
+            ffmpeg -hide_banner -loglevel error -nostdin -re -f lavfi -i color=c=#0f172a:s=1920x1080:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo -vf "$VF_FILTER" -map 0:v -map 1:a -c:v libx264 -preset ultrafast -b:v 2000k -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -f flv "$OUT_RESTREAM" &
         else
-            ffmpeg -hide_banner -loglevel error -nostdin -re -f lavfi -i color=c=#0f172a:s=1920x1080:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo -vf "$VF_FILTER" -c:v libx264 -preset ultrafast -b:v 2000k -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -f tee "[f=flv]$OUT_RESTREAM|[f=flv]$OUT_YOUTUBE" &
+            ffmpeg -hide_banner -loglevel error -nostdin -re -f lavfi -i color=c=#0f172a:s=1920x1080:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo -vf "$VF_FILTER" -map 0:v -map 1:a -c:v libx264 -preset ultrafast -b:v 2000k -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -f tee "[f=flv]$OUT_RESTREAM|[f=flv]$OUT_YOUTUBE" &
         fi
         OFFLINE_PID=$!
     fi
@@ -60,15 +59,15 @@ while true; do
         
         if [ "$DEST" == "youtube" ]; then
             ffmpeg -hide_banner -loglevel warning -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -c:v copy -c:a aac -b:a 192k -ar 44100 \
+              -map 0:v -map 0:a -c:v copy -c:a aac -b:a 192k -ar 44100 \
               -flvflags no_duration_filesize -f flv "$OUT_YOUTUBE"
         elif [ "$DEST" == "restream" ]; then
             ffmpeg -hide_banner -loglevel warning -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -c:v copy -c:a aac -b:a 192k -ar 44100 \
+              -map 0:v -map 0:a -c:v copy -c:a aac -b:a 192k -ar 44100 \
               -flvflags no_duration_filesize -f flv "$OUT_RESTREAM"
         else
             ffmpeg -hide_banner -loglevel warning -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -c:v copy -c:a aac -b:a 192k -ar 44100 \
+              -map 0:v -map 0:a -c:v copy -c:a aac -b:a 192k -ar 44100 \
               -flvflags no_duration_filesize -f tee "[f=flv]$OUT_RESTREAM|[f=flv]$OUT_YOUTUBE"
         fi
         

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==========================================
-# نظام المراقبة الذكية 24/7 مع شاشة الانتظار
+# نظام المراقبة الذكية 24/7 مع شاشة الانتظار (النسخة الأكثر استقراراً)
 # ==========================================
 
 KICK_CHANNEL="${KICK_CHANNEL:-W1pey}"
@@ -17,7 +17,6 @@ echo "========================================"
 echo "🚀 نظام المراقبة المستمرة 24/7 لقناة: $KICK_CHANNEL"
 echo "========================================"
 
-# تحميل خط عربي عريض
 if [ ! -f "cairo.ttf" ]; then
     wget -q -O cairo.ttf "https://github.com/googlefonts/cairo/raw/master/fonts/ttf/Cairo-Black.ttf"
 fi
@@ -43,7 +42,10 @@ start_offline_screen() {
         elif [ "$DEST" == "restream" ]; then
             ffmpeg -hide_banner -loglevel error -nostdin -re -f lavfi -i color=c=#0f172a:s=1920x1080:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo -vf "$VF_FILTER" -map 0:v -map 1:a -c:v libx264 -preset ultrafast -b:v 2000k -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -f flv "$OUT_RESTREAM" &
         else
-            ffmpeg -hide_banner -loglevel error -nostdin -re -f lavfi -i color=c=#0f172a:s=1920x1080:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo -vf "$VF_FILTER" -map 0:v -map 1:a -c:v libx264 -preset ultrafast -b:v 2000k -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -f tee "[f=flv]$OUT_RESTREAM|[f=flv]$OUT_YOUTUBE" &
+            # إلغاء tee واستخدام التوجيه المزدوج لمنع الكراش
+            ffmpeg -hide_banner -loglevel error -nostdin -re -f lavfi -i color=c=#0f172a:s=1920x1080:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo -vf "$VF_FILTER" \
+              -map 0:v -map 1:a -c:v libx264 -preset ultrafast -b:v 2000k -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -f flv "$OUT_RESTREAM" \
+              -map 0:v -map 1:a -c:v libx264 -preset ultrafast -b:v 2000k -pix_fmt yuv420p -g 60 -c:a aac -b:a 128k -f flv "$OUT_YOUTUBE" &
         fi
         OFFLINE_PID=$!
     fi
@@ -57,18 +59,20 @@ while true; do
         
         stop_offline_screen
         
+        # إزالة -re لمنع تلف البيانات، واستخدام :0 لضمان سحب المسار الصحيح فقط
         if [ "$DEST" == "youtube" ]; then
-            ffmpeg -hide_banner -loglevel warning -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -map 0:v -map 0:a -c:v copy -c:a aac -b:a 192k -ar 44100 \
+            ffmpeg -hide_banner -loglevel warning -nostdin -fflags +genpts+nobuffer -i "$KICK_M3U8" \
+              -map 0:v:0 -map 0:a:0 -c:v copy -c:a aac -b:a 192k -ar 44100 \
               -flvflags no_duration_filesize -f flv "$OUT_YOUTUBE"
         elif [ "$DEST" == "restream" ]; then
-            ffmpeg -hide_banner -loglevel warning -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -map 0:v -map 0:a -c:v copy -c:a aac -b:a 192k -ar 44100 \
+            ffmpeg -hide_banner -loglevel warning -nostdin -fflags +genpts+nobuffer -i "$KICK_M3U8" \
+              -map 0:v:0 -map 0:a:0 -c:v copy -c:a aac -b:a 192k -ar 44100 \
               -flvflags no_duration_filesize -f flv "$OUT_RESTREAM"
         else
-            ffmpeg -hide_banner -loglevel warning -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -map 0:v -map 0:a -c:v copy -c:a aac -b:a 192k -ar 44100 \
-              -flvflags no_duration_filesize -f tee "[f=flv]$OUT_RESTREAM|[f=flv]$OUT_YOUTUBE"
+            # توجيه مباشر للمنصتين بدون tee لضمان الاستقرار التام
+            ffmpeg -hide_banner -loglevel warning -nostdin -fflags +genpts+nobuffer -i "$KICK_M3U8" \
+              -map 0:v:0 -map 0:a:0 -c:v copy -c:a aac -b:a 192k -ar 44100 -flvflags no_duration_filesize -f flv "$OUT_RESTREAM" \
+              -map 0:v:0 -map 0:a:0 -c:v copy -c:a aac -b:a 192k -ar 44100 -flvflags no_duration_filesize -f flv "$OUT_YOUTUBE"
         fi
         
         echo "⚠️ انتهى أو توقف البث الأصلي. العودة لوضع شاشة الانتظار..."

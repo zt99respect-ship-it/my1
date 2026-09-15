@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # ==============================================================================
-# نظام البث المستمر 24/7 - حل مشكلة Segfault عبر FLV FIFO Pipe
+# نظام البث المستمر 24/7 - البث المباشر المباشر بدون أنابيب أو انهيارات
 # ==============================================================================
 
 KICK_CHANNEL="${KICK_CHANNEL:-OGABDULLAH}"
 RESTREAM_KEY="${RESTREAM_KEY:-}"
 YOUTUBE_KEY="${YOUTUBE_KEY:-}"
 QUALITY="${STREAM_QUALITY:-best}"
-DEST="${STREAM_DEST:-both}"
+DEST="${STREAM_DEST:-restream}"
 
 # تنظيف المفاتيح
 if [[ "$YOUTUBE_KEY" == "X" || "$YOUTUBE_KEY" == "x" ]]; then YOUTUBE_KEY=""; fi
@@ -30,55 +30,31 @@ echo "🎯 وجهة البث المحددة: $DEST"
 echo "🎨 الخط المستخدم للنصوص: $FONT_NAME"
 echo "========================================"
 
-# إنشاء الأنبوب المسمى للنقل المحلي الآمن
-FIFO_PATH="/tmp/stream_relay.fifo"
-rm -f "$FIFO_PATH"
-mkfifo "$FIFO_PATH"
-
-MASTER_PID=""
-FEEDER_PID=""
+STREAM_PID=""
 CURRENT_MODE="NONE"
-WAS_LIVE=false
 
 cleanup() {
-    echo "🧹 إيقاف جميع العمليات وتنظيف الأنابيب..."
+    echo "🧹 إيقاف عمليات البث..."
     trap - EXIT INT TERM
-    [ -n "$FEEDER_PID" ] && kill -9 "$FEEDER_PID" 2>/dev/null
-    [ -n "$MASTER_PID" ] && kill -9 "$MASTER_PID" 2>/dev/null
-    rm -f "$FIFO_PATH"
+    [ -n "$STREAM_PID" ] && kill -9 "$STREAM_PID" 2>/dev/null
     exit 0
 }
 trap cleanup EXIT INT TERM
 
-stop_feeder() {
-    if [ -n "$FEEDER_PID" ]; then
-        kill -9 "$FEEDER_PID" 2>/dev/null
-        FEEDER_PID=""
+stop_stream() {
+    if [ -n "$STREAM_PID" ]; then
+        kill -9 "$STREAM_PID" 2>/dev/null
+        STREAM_PID=""
     fi
 }
 
-# خادم الترحيل الرئيسي مع قراءة FLV المباشرة بدون انهيار
-start_master_relay() {
-    if [ -n "$MASTER_PID" ] && kill -0 "$MASTER_PID" 2>/dev/null; then
-        return 0
-    fi
-
-    echo "📡 تشغيل خادم الترحيل الرئيسي (Master Relay)..."
-
-    local INPUT_FLAGS="-hide_banner -loglevel warning -nostdin -f flv -i $FIFO_PATH"
-    local ENC_FLAGS="-c:v copy -c:a copy -f flv"
-
+get_outputs() {
     if [ "$DEST" == "youtube" ]; then
-        ffmpeg $INPUT_FLAGS $ENC_FLAGS "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
-        MASTER_PID=$!
+        echo "-f flv rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
     elif [ "$DEST" == "restream" ]; then
-        ffmpeg $INPUT_FLAGS $ENC_FLAGS "rtmp://live.restream.io/live/$RESTREAM_KEY" &
-        MASTER_PID=$!
+        echo "-f flv rtmp://live.restream.io/live/$RESTREAM_KEY"
     else
-        ffmpeg $INPUT_FLAGS \
-          $ENC_FLAGS "rtmp://live.restream.io/live/$RESTREAM_KEY" \
-          $ENC_FLAGS "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
-        MASTER_PID=$!
+        echo "-f flv rtmp://live.restream.io/live/$RESTREAM_KEY -f flv rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
     fi
 }
 
@@ -102,56 +78,51 @@ Dialogue: 0,0:00:00.00,9:59:59.99,Subtitle,,0,0,0,,{\fad(600,600)}جاري ان�
 EOF
 }
 
-start_initial_standby_feeder() {
+start_standby_stream() {
     generate_initial_ass
-    stop_feeder
-    ffmpeg -hide_banner -loglevel error -nostdin \
+    stop_stream
+    echo "⏳ بدء بث شاشة الانتظار إلى الوجهة المحددة..."
+    OUTPUTS=$(get_outputs)
+    ffmpeg -hide_banner -loglevel warning -nostdin \
       -re -f lavfi -i color=c=0x140024:s=1280x720:r=30 \
       -f lavfi -i anullsrc=r=44100:cl=stereo -shortest \
       -vf "ass=/tmp/initial_standby.ass" \
       -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 \
       -c:a aac -b:a 128k -ar 44100 \
-      -f flv "$FIFO_PATH" >/dev/null 2>&1 &
-    FEEDER_PID=$!
+      $OUTPUTS >/dev/null 2>&1 &
+    STREAM_PID=$!
 }
 
-start_live_feeder() {
+start_live_stream() {
     local M3U8="$1"
-    stop_feeder
-    ffmpeg -hide_banner -loglevel error -nostdin \
+    stop_stream
+    echo "🔴 بدء إعادة بث القناة المباشرة إلى الوجهة المحددة..."
+    OUTPUTS=$(get_outputs)
+    ffmpeg -hide_banner -loglevel warning -nostdin \
       -fflags +genpts -re -i "$M3U8" \
       -vf scale=1280:720 \
       -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 \
       -c:a aac -b:a 128k -ar 44100 \
-      -f flv "$FIFO_PATH" >/dev/null 2>&1 &
-    FEEDER_PID=$!
+      $OUTPUTS >/dev/null 2>&1 &
+    STREAM_PID=$!
 }
-
-# البدء بالترحيل أولاً
-start_master_relay
-start_initial_standby_feeder
-CURRENT_MODE="INITIAL_STANDBY"
 
 while true; do
     KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep -m1 "^http")
 
     if [ -n "$KICK_M3U8" ]; then
-        WAS_LIVE=true
-        if [ "$CURRENT_MODE" != "LIVE" ]; then
-            echo "✅ الستريمر $STREAMER_NAME أونلاين الآن! التبديل السلس للبث المباشر..."
-            start_live_feeder "$KICK_M3U8"
+        if [ "$CURRENT_MODE" != "LIVE" ] || ! kill -0 "$STREAM_PID" 2>/dev/null; then
+            echo "✅ الستريمر $STREAMER_NAME أونلاين! التبديل للبث المباشر..."
+            start_live_stream "$KICK_M3U8"
             CURRENT_MODE="LIVE"
         fi
     else
-        if [ "$CURRENT_MODE" != "INITIAL_STANDBY" ]; then
+        if [ "$CURRENT_MODE" != "STANDBY" ] || ! kill -0 "$STREAM_PID" 2>/dev/null; then
             echo "⏳ الستريمر $STREAMER_NAME غير متصل.. عرض شاشة الانتظار..."
-            start_initial_standby_feeder
-            CURRENT_MODE="INITIAL_STANDBY"
+            start_standby_stream
+            CURRENT_MODE="STANDBY"
         fi
     fi
-
-    # إعادة تشغيل خادم الترحيل إذا توقف لأي سبب
-    start_master_relay
 
     sleep 10
 done

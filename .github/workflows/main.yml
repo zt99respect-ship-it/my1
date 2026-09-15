@@ -45,9 +45,6 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           sudo fc-cache -f
 
-      - name: التحقق من الخطوط المتوفرة
-        run: fc-list : family | grep -iE "noto (naskh|sans) arabic|scheherazade|amiri" | head -5 || true
-
       - name: تشغيل سكربت البث الشامل
         env:
           KICK_CHANNEL: ${{ github.event.inputs.kick_channel }}

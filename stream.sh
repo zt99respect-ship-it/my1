@@ -12,7 +12,6 @@ DEST="${STREAM_DEST:-both}"
 STREAMER_NAME=$(echo "$KICK_CHANNEL" | tr '[:lower:]' '[:upper:]')
 FONT_PATH="/usr/share/fonts/truetype/sil/Scheherazade-Bold.ttf"
 
-# استخدام الخط العربي الأساسي في حال عدم وجود الخط العريض
 if [ ! -f "$FONT_PATH" ]; then
     FONT_PATH="/usr/share/fonts/truetype/sil/ScheherazadeRegOT.ttf"
 fi
@@ -21,7 +20,6 @@ echo "========================================"
 echo "🚀 نظام المراقبة الذكية للقناة: $STREAMER_NAME"
 echo "========================================"
 
-# دالة إرسال البث إلى المنصات بشكل مستمر ودائم بدون توقف
 push_to_destinations() {
     local INPUT_ARGS="$1"
     local VF_FILTER="$2"
@@ -45,29 +43,26 @@ push_to_destinations() {
         FF_PID="$PID1 $PID2"
     fi
 
-    # فحص صامت كل 10 ثوانٍ لمعرفة هل بدأ الستريمر البث الحقيقي لإيقاف الشاشة فوراً
     for i in {1..3}; do
         sleep 10
-        CHECK_STREAM=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/devnull | grep "^http")
+        CHECK_STREAM=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep "^http")
         if [ -n "$CHECK_STREAM" ]; then
             echo "⚡ تم رصد دخول الستريمر أونلاين! قطع شاشة الانتظار والانتقال للبث المباشر..."
-            kill -9 $FF_PID 2>/devnull
-            wait $FF_PID 2>/devnull
+            kill -9 $FF_PID 2>/dev/null
+            wait $FF_PID 2>/dev/null
             return 0
         fi
     done
 
-    # تنظيف العمليات بعد انتهاء الدورة وإعادتها تلقائياً
-    kill -9 $FF_PID 2>/devnull
-    wait $FF_PID 2>/devnull
+    kill -9 $FF_PID 2>/dev/null
+    wait $FF_PID 2>/dev/null
 }
 
-# 1. شاشة الانتظار الأولى بالعربية (قبل بداية البث)
 send_initial_waiting_screen() {
     echo "⏳ الستريمر $STREAMER_NAME غير متصل.. إرسال شاشة الانتظار الأولى بالعربية..."
 
-    local TEXT_TOP=$(echo "جاري انتظار بث الستريمر $STREAMER_NAME" | fribidi --lines 1)
-    local TEXT_BOTTOM=$(echo "لم يبدأ البث المباشر بعد..." | fribidi --lines 1)
+    local TEXT_TOP=$(echo "جاري انتظار بث الستريمر $STREAMER_NAME" | fribidi)
+    local TEXT_BOTTOM=$(echo "لم يبدأ البث المباشر بعد..." | fribidi)
 
     local VF_FILTER="drawtext=fontfile=${FONT_PATH}:text='${TEXT_TOP}':fontcolor=0xD8B4FE:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2-50:alpha='0.6+0.4*sin(t*3)',drawtext=fontfile=${FONT_PATH}:text='${TEXT_BOTTOM}':fontcolor=0xA855F7:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2+40:alpha='0.4+0.6*cos(t*2)'"
     local INPUT_FLAGS="-re -f lavfi -i color=c=0x140024:s=1280x720:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo"
@@ -75,12 +70,11 @@ send_initial_waiting_screen() {
     push_to_destinations "$INPUT_FLAGS" "$VF_FILTER"
 }
 
-# 2. شاشة تعليق البث بالعربية (إذا كان أونلاين ثم انقطع)
 send_stream_crash_screen() {
     echo "⚠️ انقطع البث من عند $STREAMER_NAME.. إرسال شاشة تعليق البث بالعربية..."
 
-    local TEXT_TOP=$(echo "علق البث من قبل الستريمر $STREAMER_NAME" | fribidi --lines 1)
-    local TEXT_BOTTOM=$(echo "جاري إعادة الاتصال تلقائياً..." | fribidi --lines 1)
+    local TEXT_TOP=$(echo "علق البث من قبل الستريمر $STREAMER_NAME" | fribidi)
+    local TEXT_BOTTOM=$(echo "جاري إعادة الاتصال تلقائياً..." | fribidi)
 
     local VF_FILTER="drawtext=fontfile=${FONT_PATH}:text='${TEXT_TOP}':fontcolor=0xF472B6:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2-50+10*sin(t*4):alpha='0.6+0.4*sin(t*3)',drawtext=fontfile=${FONT_PATH}:text='${TEXT_BOTTOM}':fontcolor=0xE879F9:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2+40:alpha='0.3+0.7*abs(cos(t*2))'"
     local INPUT_FLAGS="-re -f lavfi -i color=c=0x26001b:s=1280x720:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo"
@@ -91,7 +85,7 @@ send_stream_crash_screen() {
 WAS_LIVE=false
 
 while true; do
-    KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/devnull | grep "^http")
+    KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep "^http")
 
     if [ -n "$KICK_M3U8" ]; then
         echo "✅ الستريمر $STREAMER_NAME متصل الآن! جاري نقل البث المباشر..."

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==========================================
-# نظام المراقبة الذكية وشاشات الانتظار البنفسجية (مُصلح ليوتيوب)
+# نظام المراقبة الذكية الشامل مع شاشات الانتظار
 # ==========================================
 KICK_CHANNEL="${KICK_CHANNEL:-W1pey}"
 RESTREAM_KEY="${RESTREAM_KEY:-re_12215822_event12d2d60d5f814c68b3c0f0137cacab10}"
@@ -16,7 +16,7 @@ echo "========================================"
 echo "🚀 نظام المراقبة الذكية للقناة: $STREAMER_NAME"
 echo "========================================"
 
-# دالة بث شاشات الانتظار مع خيارات التوافق الخاصة بيوتيوب
+# دالة بث شاشات الانتظار مع خيارات التوافق الخاصة بيوتيوب وريستريم
 push_to_destinations() {
     local INPUT_ARGS="$1"
     local VF_FILTER="$2"
@@ -27,7 +27,7 @@ push_to_destinations() {
         TIME_LIMIT="-t $DURATION"
     fi
 
-    # خيارات الترميز المحسنة لجعل يوتيوب يتعرف على البث فوراً
+    # إعدادات الفيديو الحادة المتوافقة 100% مع يوتيوب وريستريم
     local FF_OPTS="-c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 -keyint_min 60 -sc_threshold 0 -c:a aac -b:a 128k -ar 44100 -flvflags no_duration_filesize -f flv"
 
     if [ "$DEST" == "youtube" ]; then
@@ -48,23 +48,23 @@ push_to_destinations() {
     fi
 }
 
-# 1. شاشة الانتظار الأولى (قبل بدء البث)
+# 1. شاشة الانتظار الأولى (عند بدء التشغيل والستريمر أوفلاين)
 send_initial_waiting_screen() {
     local DURATION=15
-    echo "⏳ الستريمر $STREAMER_NAME غير متصل.. إرسال شاشة الانتظار الأولى..."
+    echo "⏳ الستريمر $STREAMER_NAME غير متصل.. بث شاشة الانتظار الأولى..."
 
-    local VF_FILTER="drawtext=fontfile=${FONT_PATH}:text='Waiting for streamer\: ${STREAMER_NAME}':fontcolor=0xD8B4FE:fontsize=34:x=(w-text_w)/2:y=(h-text_h)/2-40:alpha='0.5+0.5*sin(t*3)',drawtext=fontfile=${FONT_PATH}:text='Stream has not started yet...':fontcolor=0xA855F7:fontsize=24:x=(w-text_w)/2:y=(h-text_h)/2+30:alpha='0.4+0.6*cos(t*2)'"
+    local VF_FILTER="drawtext=fontfile=${FONT_PATH}:text='WAITING FOR STREAMER\: ${STREAMER_NAME}':fontcolor=0xD8B4FE:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2-40:alpha='0.6+0.4*sin(t*3)',drawtext=fontfile=${FONT_PATH}:text='PLEASE WAIT... STREAM HAS NOT STARTED':fontcolor=0xA855F7:fontsize=24:x=(w-text_w)/2:y=(h-text_h)/2+30:alpha='0.4+0.6*cos(t*2)'"
     local INPUT_FLAGS="-re -f lavfi -i color=c=0x140024:s=1280x720:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo"
     
     push_to_destinations "$INPUT_FLAGS" "$VF_FILTER" "$DURATION"
 }
 
-# 2. شاشة تعليق/انقطاع البث
+# 2. شاشة تعليق البث (إذا كان أونلاين ثم انقطع)
 send_stream_crash_screen() {
     local DURATION=15
-    echo "⚠️ انقطع البث من عند $STREAMER_NAME.. إرسال شاشة التعليق..."
+    echo "⚠️ انقطع البث من عند $STREAMER_NAME.. بث شاشة التعليق..."
 
-    local VF_FILTER="drawtext=fontfile=${FONT_PATH}:text='Stream paused by\: ${STREAMER_NAME}':fontcolor=0xF472B6:fontsize=34:x=(w-text_w)/2:y=(h-text_h)/2-40+10*sin(t*4):alpha='0.6+0.4*sin(t*3)',drawtext=fontfile=${FONT_PATH}:text='Reconnecting... Please wait':fontcolor=0xE879F9:fontsize=24:x=(w-text_w)/2:y=(h-text_h)/2+30:alpha='0.3+0.7*abs(cos(t*2))'"
+    local VF_FILTER="drawtext=fontfile=${FONT_PATH}:text='STREAM PAUSED BY\: ${STREAMER_NAME}':fontcolor=0xF472B6:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2-40+10*sin(t*4):alpha='0.6+0.4*sin(t*3)',drawtext=fontfile=${FONT_PATH}:text='RECONNECTING... PLEASE WAIT':fontcolor=0xE879F9:fontsize=24:x=(w-text_w)/2:y=(h-text_h)/2+30:alpha='0.3+0.7*abs(cos(t*2))'"
     local INPUT_FLAGS="-re -f lavfi -i color=c=0x26001b:s=1280x720:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo"
 
     push_to_destinations "$INPUT_FLAGS" "$VF_FILTER" "$DURATION"

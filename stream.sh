@@ -1,11 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# حل مشكلة النص العربي المقلوب والمشوه عبر libass:
-# - السبب السابق: استخدام drawtext + arabic_reshaper ينتج Visual Order مع fribidi ما يسبب Double BiDi.
-# - الحل المعتمد: الاعتماد على libass المدمج بـ FFmpeg ومحرك HarfBuzz لمعالجة التشكيل والاتجاه طبيعياً.
-# - الخط المستخدم: يتم فحص تثبيت 'Noto Naskh Arabic' ثم 'Scheherazade New' عبر fc-list.
-# - طريقة التحقق: ffmpeg -f lavfi -i color=c=0x26001b:s=1280x720 -vf ass=/tmp/standby.ass -vframes 1 test.png
+# نظام البث المستمر 24/7 مع التبديل الديناميكي بدون انقطاع جلسة RTMP
 # ==============================================================================
 
 KICK_CHANNEL="${KICK_CHANNEL:-W1pey}"
@@ -50,37 +46,61 @@ echo "🚀 نظام المراقبة الذكية للقناة: $STREAMER_NAME"
 echo "🎨 الخط المستخدم للنصوص: $FONT_NAME"
 echo "========================================"
 
-# استخدام مصفوفة Bash للـ PIDs
-PIDS=()
-WAS_LIVE=false
-STANDBY_RUNNING=false
+LOCAL_UDP_LISTEN="udp://127.0.0.1:12345?fifo_size=2000000&overrun_nonfatal=1"
+LOCAL_UDP_PUSH="udp://127.0.0.1:12345"
 
-# إيقاف العمليات عند إلغاء الـ Workflow
+MASTER_PID=""
+FEEDER_PID=""
+CURRENT_MODE="NONE"
+WAS_LIVE=false
+
+# تنظيف العمليات عند إغلاق السكربت أو إلغاء الـ Workflow
 cleanup() {
     echo "🧹 إيقاف جميع العمليات وتنظيف البيئة..."
     trap - EXIT INT TERM
-    if [ ${#PIDS[@]} -gt 0 ]; then
-        kill -TERM "${PIDS[@]}" 2>/dev/null
-        sleep 2
-        kill -KILL "${PIDS[@]}" 2>/dev/null
-    fi
+    [ -n "$FEEDER_PID" ] && kill -9 "$FEEDER_PID" 2>/dev/null
+    [ -n "$MASTER_PID" ] && kill -9 "$MASTER_PID" 2>/dev/null
     exit 0
 }
 trap cleanup EXIT INT TERM
 
-# إيقاف عمليات البث الحالية
-stop_pids() {
-    if [ ${#PIDS[@]} -gt 0 ]; then
-        kill -TERM "${PIDS[@]}" 2>/dev/null
+# إيقاف عملية المغذي المحلي الحالية
+stop_feeder() {
+    if [ -n "$FEEDER_PID" ]; then
+        kill -TERM "$FEEDER_PID" 2>/dev/null
         sleep 1
-        kill -KILL "${PIDS[@]}" 2>/dev/null
-        PIDS=()
+        kill -KILL "$FEEDER_PID" 2>/dev/null
+        FEEDER_PID=""
     fi
 }
 
-# توليد ملف الترجمة ASS بالنص العربي والأنيميشن الكاملة
-generate_ass_file() {
-    cat <<EOF > /tmp/standby.ass
+# تشغيل خادم الترحيل الرئيسي (المسؤول عن إبقاء الاتصال مفتوحاً بـ YouTube/Restream)
+start_master_relay() {
+    if [ -n "$MASTER_PID" ] && kill -0 "$MASTER_PID" 2>/dev/null; then
+        return 0
+    fi
+
+    echo "📡 تشغيل خادم الترحيل الرئيسي (Master Relay) للحفاظ على البث مستمراً..."
+
+    local FF_OPTS="-c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 -keyint_min 60 -sc_threshold 0 -c:a aac -b:a 128k -ar 44100 -flvflags no_duration_filesize"
+
+    if [ "$DEST" == "youtube" ]; then
+        ffmpeg -hide_banner -loglevel error -nostdin -re -i "$LOCAL_UDP_LISTEN" $FF_OPTS -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
+        MASTER_PID=$!
+    elif [ "$DEST" == "restream" ]; then
+        ffmpeg -hide_banner -loglevel error -nostdin -re -i "$LOCAL_UDP_LISTEN" $FF_OPTS -f flv "rtmp://live.restream.io/live/$RESTREAM_KEY" &
+        MASTER_PID=$!
+    else
+        ffmpeg -hide_banner -loglevel error -nostdin -re -i "$LOCAL_UDP_LISTEN" \
+          $FF_OPTS -f flv "rtmp://live.restream.io/live/$RESTREAM_KEY" \
+          $FF_OPTS -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
+        MASTER_PID=$!
+    fi
+}
+
+# توليد ملف شاشة الانتظار الأولية (أوفلاين من البداية)
+generate_initial_ass() {
+    cat <<EOF > /tmp/initial_standby.ass
 [Script Info]
 ScriptType: v4.00+
 PlayResX: 1280
@@ -89,108 +109,120 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Title,$FONT_NAME,46,&H00FEB4D8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,280,1
-Style: Subtitle,$FONT_NAME,30,&H00F755A8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,360,1
+Style: Title,$FONT_NAME,44,&H00FEB4D8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,280,1
+Style: Subtitle,$FONT_NAME,32,&H00F755A8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,360,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:00.00,9:59:59.99,Title,,0,0,0,,{\fad(600,600)\t(0,2000,\fscx105\fscy105)\t(2000,4000,\fscx100\fscy100)\t(4000,6000,\fscx105\fscy105)\t(6000,8000,\fscx100\fscy100)\t(0,8000,\frz1.5)}علق البث من قبل الستريمر ${STREAMER_NAME}
-Dialogue: 0,0:00:00.00,9:59:59.99,Subtitle,,0,0,0,,{\fad(600,600)\t(0,1500,\blur2)\t(1500,3000,\blur0.5)\t(3000,4500,\blur2)\t(4500,6000,\blur0.5)\t(0,3000,\fscx103\fscy103)\t(3000,6000,\fscx100\fscy100)}جاري إعادة الاتصال تلقائياً...
+Dialogue: 0,0:00:00.00,9:59:59.99,Title,,0,0,0,,{\fad(600,600)\t(0,2000,\fscx105\fscy105)\t(2000,4000,\fscx100\fscy100)\t(4000,6000,\fscx105\fscy105)\t(6000,8000,\fscx100\fscy100)}لم يبدأ البث المباشر بعد...
+Dialogue: 0,0:00:00.00,9:59:59.99,Subtitle,,0,0,0,,{\fad(600,600)\t(0,1500,\blur2)\t(1500,3000,\blur0.5)\t(3000,4500,\blur2)\t(4500,6000,\blur0.5)}جاري انتظار الستريمر ${STREAMER_NAME}
 EOF
 }
 
-# تشغيل بث شاشة الانتظار
-start_standby_stream() {
-    generate_ass_file
-    stop_pids
+# توليد ملف شاشة تعليق البث (عند الانقطاع بعد الأونلاين)
+generate_crash_ass() {
+    cat <<EOF > /tmp/crash_standby.ass
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1280
+PlayResY: 720
+ScaledBorderAndShadow: yes
 
-    local VF_FILTER="ass=/tmp/standby.ass"
-    local INPUT_FLAGS="-re -f lavfi -i color=c=0x26001b:s=1280x720:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo -shortest"
-    local FF_OPTS="-c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 -keyint_min 60 -sc_threshold 0 -c:a aac -b:a 128k -ar 44100 -flvflags no_duration_filesize -f flv"
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Title,$FONT_NAME,44,&H00FEB4D8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,280,1
+Style: Subtitle,$FONT_NAME,32,&H00F755A8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,360,1
 
-    if [ "$DEST" == "youtube" ]; then
-        ffmpeg -hide_banner -loglevel error -nostdin $INPUT_FLAGS -vf "$VF_FILTER" $FF_OPTS "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
-        PIDS+=($!)
-    elif [ "$DEST" == "restream" ]; then
-        ffmpeg -hide_banner -loglevel error -nostdin $INPUT_FLAGS -vf "$VF_FILTER" $FF_OPTS "rtmp://live.restream.io/live/$RESTREAM_KEY" &
-        PIDS+=($!)
-    else
-        ffmpeg -hide_banner -loglevel error -nostdin $INPUT_FLAGS -vf "$VF_FILTER" $FF_OPTS "rtmp://live.restream.io/live/$RESTREAM_KEY" &
-        PIDS+=($!)
-        ffmpeg -hide_banner -loglevel error -nostdin $INPUT_FLAGS -vf "$VF_FILTER" $FF_OPTS "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
-        PIDS+=($!)
-    fi
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,9:59:59.99,Title,,0,0,0,,{\fad(600,600)\t(0,2000,\fscx105\fscy105)\t(2000,4000,\fscx100\fscy100)\t(4000,6000,\fscx105\fscy105)\t(6000,8000,\fscx100\fscy100)}علق البث من قبل الستريمر ${STREAMER_NAME}
+Dialogue: 0,0:00:00.00,9:59:59.99,Subtitle,,0,0,0,,{\fad(600,600)\t(0,1500,\blur2)\t(1500,3000,\blur0.5)\t(3000,4500,\blur2)\t(4500,6000,\blur0.5)}جاري إعادة الاتصال تلقائياً...
+EOF
 }
 
-# تشغيل البث المباشر الفعلي
-start_live_stream() {
+# تغذية شاشة الانتظار الأولية
+start_initial_standby_feeder() {
+    generate_initial_ass
+    stop_feeder
+    ffmpeg -hide_banner -loglevel error -nostdin \
+      -re -f lavfi -i color=c=0x140024:s=1280x720:r=30 \
+      -f lavfi -i anullsrc=r=44100:cl=stereo -shortest \
+      -vf "ass=/tmp/initial_standby.ass" \
+      -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 60 \
+      -c:a aac -b:a 128k -ar 44100 \
+      -f mpegts "$LOCAL_UDP_PUSH" &
+    FEEDER_PID=$!
+}
+
+# تغذية شاشة انقطاع البث
+start_crash_standby_feeder() {
+    generate_crash_ass
+    stop_feeder
+    ffmpeg -hide_banner -loglevel error -nostdin \
+      -re -f lavfi -i color=c=0x26001b:s=1280x720:r=30 \
+      -f lavfi -i anullsrc=r=44100:cl=stereo -shortest \
+      -vf "ass=/tmp/crash_standby.ass" \
+      -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 60 \
+      -c:a aac -b:a 128k -ar 44100 \
+      -f mpegts "$LOCAL_UDP_PUSH" &
+    FEEDER_PID=$!
+}
+
+# تغذية البث المباشر من Kick
+start_live_feeder() {
     local M3U8="$1"
-    stop_pids
-
-    local FF_OPTS="-map 0:v -map 0:a? -c:v copy -c:a aac -b:a 192k -ar 44100 -flvflags no_duration_filesize -f flv"
-
-    if [ "$DEST" == "youtube" ]; then
-        ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$M3U8" $FF_OPTS "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
-        PIDS+=($!)
-    elif [ "$DEST" == "restream" ]; then
-        ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$M3U8" $FF_OPTS "rtmp://live.restream.io/live/$RESTREAM_KEY" &
-        PIDS+=($!)
-    else
-        ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$M3U8" $FF_OPTS "rtmp://live.restream.io/live/$RESTREAM_KEY" &
-        PIDS+=($!)
-        ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$M3U8" $FF_OPTS "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
-        PIDS+=($!)
-    fi
+    stop_feeder
+    ffmpeg -hide_banner -loglevel error -nostdin \
+      -fflags +genpts+nobuffer -re -i "$M3U8" \
+      -vf scale=1280:720 \
+      -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 60 \
+      -c:a aac -b:a 128k -ar 44100 \
+      -f mpegts "$LOCAL_UDP_PUSH" &
+    FEEDER_PID=$!
 }
 
-# الحلقة الرئيسية للمراقبة
+# الحلقة الرئيسية للمراقبة والتبديل المباشر
 while true; do
     KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep -m1 "^http")
 
+    # ضمان استمرار عمل خادم الترحيل الرئيسي
+    start_master_relay
+
     if [ -n "$KICK_M3U8" ]; then
-        echo "✅ الستريمر $STREAMER_NAME متصل الآن!"
         WAS_LIVE=true
-
-        if [ "$STANDBY_RUNNING" = true ]; then
-            stop_pids
-            STANDBY_RUNNING=false
+        if [ "$CURRENT_MODE" != "LIVE" ]; then
+            echo "✅ الستريمر $STREAMER_NAME أونلاين الآن! التبديل السلس للبث المباشر..."
+            start_live_feeder "$KICK_M3U8"
+            CURRENT_MODE="LIVE"
+        else
+            if [ -n "$FEEDER_PID" ] && ! kill -0 "$FEEDER_PID" 2>/dev/null; then
+                echo "⚠️ تعثرت تغذية البث، جاري إعادة المحاولة..."
+                start_live_feeder "$KICK_M3U8"
+            fi
         fi
-
-        LIVE_RUNNING=false
-        if [ ${#PIDS[@]} -gt 0 ]; then
-            LIVE_RUNNING=true
-            for pid in "${PIDS[@]}"; do
-                if ! kill -0 "$pid" 2>/dev/null; then
-                    LIVE_RUNNING=false
-                    break
-                fi
-            done
-        fi
-
-        if [ "$LIVE_RUNNING" = false ]; then
-            echo "🚀 بدء نقل البث المباشر..."
-            start_live_stream "$KICK_M3U8"
-        fi
-
-        sleep 30
     else
         if [ "$WAS_LIVE" = true ]; then
-            echo "⚠️ انقطع البث من عند $STREAMER_NAME.. عرض شاشة تعليق البث بالعربية..."
-            if [ "$STANDBY_RUNNING" = false ]; then
-                stop_pids
-                start_standby_stream
-                STANDBY_RUNNING=true
+            if [ "$CURRENT_MODE" != "CRASH_STANDBY" ]; then
+                echo "⚠️ انقطع البث من عند $STREAMER_NAME.. التبديل إلى شاشة تعليق البث..."
+                start_crash_standby_feeder
+                CURRENT_MODE="CRASH_STANDBY"
             else
-                for pid in "${PIDS[@]}"; do
-                    if ! kill -0 "$pid" 2>/dev/null; then
-                        start_standby_stream
-                        break
-                    fi
-                done
+                if [ -n "$FEEDER_PID" ] && ! kill -0 "$FEEDER_PID" 2>/dev/null; then
+                    start_crash_standby_feeder
+                fi
             fi
         else
-            echo "⏳ الستريمر $STREAMER_NAME غير متصل بعد.. في انتظار خروج الستريمر أونلاين..."
+            if [ "$CURRENT_MODE" != "INITIAL_STANDBY" ]; then
+                echo "⏳ الستريمر $STREAMER_NAME غير متصل.. عرض شاشة الانتظار الأولية..."
+                start_initial_standby_feeder
+                CURRENT_MODE="INITIAL_STANDBY"
+            else
+                if [ -n "$FEEDER_PID" ] && ! kill -0 "$FEEDER_PID" 2>/dev/null; then
+                    start_initial_standby_feeder
+                fi
+            fi
         fi
-        sleep 30
     fi
+
+    sleep 15
 done

@@ -6,11 +6,11 @@ on:
       kick_channel:
         description: 'Kick Channel Name'
         required: true
-        default: 'W1pey'
+        default: 'drb7h'
       youtube_key:
         description: 'YouTube Stream Key'
         required: true
-        default: ''
+        default: 'fsc0-8j8u-xu8g-8yeb-45ve'
       restream_key:
         description: 'Restream Key'
         required: false
@@ -31,10 +31,10 @@ jobs:
       - name: جلب ملفات المستودع
         uses: actions/checkout@v3
 
-      - name: تثبيت FFmpeg و Streamlink
+      - name: تثبيت FFmpeg و Streamlink والخطوط
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3-pip
+          sudo apt-get install -y ffmpeg python3-pip fonts-dejavu-core
           sudo pip3 install --upgrade streamlink
 
       - name: تشغيل سكربت البث الشامل

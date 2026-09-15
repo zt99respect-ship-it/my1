@@ -12,7 +12,7 @@ DEST="${STREAM_DEST:-both}"
 STREAMER_NAME=$(echo "$KICK_CHANNEL" | tr '[:lower:]' '[:upper:]')
 FONT_PATH="/usr/share/fonts/truetype/sil/Scheherazade-Bold.ttf"
 
-# إذا لم يتوفر الخط العريض نستخدم الخط العربي الأساسي
+# استخدام الخط العربي الأساسي في حال عدم وجود الخط العريض
 if [ ! -f "$FONT_PATH" ]; then
     FONT_PATH="/usr/share/fonts/truetype/sil/ScheherazadeRegOT.ttf"
 fi
@@ -45,28 +45,27 @@ push_to_destinations() {
         FF_PID="$PID1 $PID2"
     fi
 
-    # فحص صامت كل 10 ثوانٍ لمعرفة هل بدأ الستريمر البث الحقيقي لإيقاف هذه الشاشة
+    # فحص صامت كل 10 ثوانٍ لمعرفة هل بدأ الستريمر البث الحقيقي لإيقاف الشاشة فوراً
     for i in {1..3}; do
         sleep 10
-        CHECK_STREAM=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep "^http")
+        CHECK_STREAM=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/devnull | grep "^http")
         if [ -n "$CHECK_STREAM" ]; then
             echo "⚡ تم رصد دخول الستريمر أونلاين! قطع شاشة الانتظار والانتقال للبث المباشر..."
-            kill -9 $FF_PID 2>/dev/null
-            wait $FF_PID 2>/dev/null
+            kill -9 $FF_PID 2>/devnull
+            wait $FF_PID 2>/devnull
             return 0
         fi
     done
 
-    # تنظيف العمليات عند انتهاء الدورة
-    kill -9 $FF_PID 2>/dev/null
-    wait $FF_PID 2>/dev/null
+    # تنظيف العمليات بعد انتهاء الدورة وإعادتها تلقائياً
+    kill -9 $FF_PID 2>/devnull
+    wait $FF_PID 2>/devnull
 }
 
 # 1. شاشة الانتظار الأولى بالعربية (قبل بداية البث)
 send_initial_waiting_screen() {
     echo "⏳ الستريمر $STREAMER_NAME غير متصل.. إرسال شاشة الانتظار الأولى بالعربية..."
 
-    # النص العربي مقلوب ومُشكّل برمجياً للعرض الصحيح العريض
     local TEXT_TOP=$(echo "جاري انتظار بث الستريمر $STREAMER_NAME" | fribidi --lines 1)
     local TEXT_BOTTOM=$(echo "لم يبدأ البث المباشر بعد..." | fribidi --lines 1)
 
@@ -76,7 +75,7 @@ send_initial_waiting_screen() {
     push_to_destinations "$INPUT_FLAGS" "$VF_FILTER"
 }
 
-# 2. شاشة تعليق البث بالعربية (إذا انقطع)
+# 2. شاشة تعليق البث بالعربية (إذا كان أونلاين ثم انقطع)
 send_stream_crash_screen() {
     echo "⚠️ انقطع البث من عند $STREAMER_NAME.. إرسال شاشة تعليق البث بالعربية..."
 
@@ -92,7 +91,7 @@ send_stream_crash_screen() {
 WAS_LIVE=false
 
 while true; do
-    KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep "^http")
+    KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/devnull | grep "^http")
 
     if [ -n "$KICK_M3U8" ]; then
         echo "✅ الستريمر $STREAMER_NAME متصل الآن! جاري نقل البث المباشر..."

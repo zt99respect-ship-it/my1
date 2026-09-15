@@ -1,8 +1,18 @@
 #!/bin/bash
 
-# ==========================================
-# نظام المراقبة الذكية وشاشات الانتظار بالعربية المستمرة
-# ==========================================
+# ==============================================================================
+# شرح حل مشكلة النص العربي (تجنب Double BiDi):
+# 1. سبب المشكلة السابق: استخدام drawtext + arabic_reshaper/python-bidi يسبب "عكس مضاعف" (Double BiDi)،
+#    لأن FFmpeg يُعيد عكس الاتجاه مع تفعيل fribidi داخلياً.
+# 2. الحل المعتمد (الحل ب): الانتقال كلياً إلى مكتبة libass عبر توليد ملف (.ass).
+#    تعتمد libass على محرك HarfBuzz لتشكيل الحروف وترتيب الاتجاهات (RTL/LTR) تلقائياً
+#    من النص المنطقي الطبيعي بدون الحاجة لأي مكتبات تشكيل خارجية.
+# 3. الخط المستخدم: يُحدد تلقائياً عبر fontconfig بترتيب الموثوقية: 'Noto Naskh Arabic' ثم 'Scheherazade New'.
+# 4. كيفية التحقق قبل الاعتماد:
+#    تشغيل الأمر: ffmpeg -f lavfi -i color=c=0x26001b:s=1280x720 -vf ass=/tmp/standby.ass -vframes 1 test.png
+#    ومعاينة الصورة الناتجة لضمان سلامة التشكيل والاتجاه.
+# ==============================================================================
+
 KICK_CHANNEL="${KICK_CHANNEL:-W1pey}"
 RESTREAM_KEY="${RESTREAM_KEY:-re_12215822_event12d2d60d5f814c68b3c0f0137cacab10}"
 YOUTUBE_KEY="${YOUTUBE_KEY:-}"
@@ -10,115 +20,160 @@ QUALITY="${STREAM_QUALITY:-best}"
 DEST="${STREAM_DEST:-both}"
 
 STREAMER_NAME=$(echo "$KICK_CHANNEL" | tr '[:lower:]' '[:upper:]')
-FONT_PATH="/usr/share/fonts/truetype/sil/Scheherazade-Bold.ttf"
 
-if [ ! -f "$FONT_PATH" ]; then
-    FONT_PATH="/usr/share/fonts/truetype/sil/ScheherazadeRegOT.ttf"
+# تحديد أفضل خط عربي متوفر عبر fontconfig
+FONT_NAME="Noto Naskh Arabic"
+if ! fc-match "$FONT_NAME" &>/dev/null; then
+    FONT_NAME="Scheherazade New"
 fi
 
 echo "========================================"
 echo "🚀 نظام المراقبة الذكية للقناة: $STREAMER_NAME"
+echo "🎨 الخط المستخدم للنصوص: $FONT_NAME"
 echo "========================================"
 
-push_to_destinations() {
-    local INPUT_ARGS="$1"
-    local VF_FILTER="$2"
-    local FF_PID=""
+PIDS=""
+WAS_LIVE=false
+STANDBY_RUNNING=false
 
+# تنظيف العمليات عند إغلاق السكربت أو إلغاء الـ Workflow
+cleanup() {
+    echo "🧹 إيقاف جميع العمليات وتنظيف البيئة..."
+    trap - EXIT INT TERM
+    if [ -n "$PIDS" ]; then
+        kill -TERM $PIDS 2>/dev/null
+        sleep 2
+        kill -KILL $PIDS 2>/dev/null
+    fi
+    exit 0
+}
+trap cleanup EXIT INT TERM
+
+# إيقاف العمليات الحالية بأمان
+stop_pids() {
+    if [ -n "$PIDS" ]; then
+        kill -TERM $PIDS 2>/dev/null
+        sleep 1
+        kill -KILL $PIDS 2>/dev/null
+        PIDS=""
+    fi
+}
+
+# توليد ملف الترجمة ASS بالنص العربي الطبيعي المنطقي
+generate_ass_file() {
+    cat <<EOF > /tmp/standby.ass
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1280
+PlayResY: 720
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Title,$FONT_NAME,46,&H00FEB4D8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,280,1
+Style: Subtitle,$FONT_NAME,30,&H00F755A8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,360,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,9:59:59.99,Title,,0,0,0,,{\fad(600,600)}علق البث من قبل الستريمر ${STREAMER_NAME}
+Dialogue: 0,0:00:00.00,9:59:59.99,Subtitle,,0,0,0,,{\fad(600,600)}جاري إعادة الاتصال تلقائياً...
+EOF
+}
+
+# تشغيل بث شاشة الانتظار عند تعليق البث
+start_standby_stream() {
+    generate_ass_file
+    stop_pids
+
+    local VF_FILTER="ass=/tmp/standby.ass"
+    local INPUT_FLAGS="-re -f lavfi -i color=c=0x26001b:s=1280x720:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo"
     local FF_OPTS="-c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 -keyint_min 60 -sc_threshold 0 -c:a aac -b:a 128k -ar 44100 -flvflags no_duration_filesize -f flv"
 
     if [ "$DEST" == "youtube" ]; then
-        ffmpeg -hide_banner -loglevel error -nostdin $INPUT_ARGS -vf "$VF_FILTER" $FF_OPTS "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
-        FF_PID=$!
-
+        ffmpeg -hide_banner -loglevel error -nostdin $INPUT_FLAGS -vf "$VF_FILTER" $FF_OPTS "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
+        PIDS=$!
     elif [ "$DEST" == "restream" ]; then
-        ffmpeg -hide_banner -loglevel error -nostdin $INPUT_ARGS -vf "$VF_FILTER" $FF_OPTS "rtmp://live.restream.io/live/$RESTREAM_KEY" &
-        FF_PID=$!
-
+        ffmpeg -hide_banner -loglevel error -nostdin $INPUT_FLAGS -vf "$VF_FILTER" $FF_OPTS "rtmp://live.restream.io/live/$RESTREAM_KEY" &
+        PIDS=$!
     else
-        ffmpeg -hide_banner -loglevel error -nostdin $INPUT_ARGS -vf "$VF_FILTER" $FF_OPTS "rtmp://live.restream.io/live/$RESTREAM_KEY" &
+        ffmpeg -hide_banner -loglevel error -nostdin $INPUT_FLAGS -vf "$VF_FILTER" $FF_OPTS "rtmp://live.restream.io/live/$RESTREAM_KEY" &
         local PID1=$!
-        ffmpeg -hide_banner -loglevel error -nostdin $INPUT_ARGS -vf "$VF_FILTER" $FF_OPTS "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
+        ffmpeg -hide_banner -loglevel error -nostdin $INPUT_FLAGS -vf "$VF_FILTER" $FF_OPTS "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
         local PID2=$!
-        FF_PID="$PID1 $PID2"
+        PIDS="$PID1 $PID2"
     fi
-
-    for i in {1..3}; do
-        sleep 10
-        CHECK_STREAM=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep "^http")
-        if [ -n "$CHECK_STREAM" ]; then
-            echo "⚡ تم رصد دخول الستريمر أونلاين! قطع شاشة الانتظار والانتقال للبث المباشر..."
-            kill -9 $FF_PID 2>/dev/null
-            wait $FF_PID 2>/dev/null
-            return 0
-        fi
-    done
-
-    kill -9 $FF_PID 2>/dev/null
-    wait $FF_PID 2>/dev/null
 }
 
-send_initial_waiting_screen() {
-    echo "⏳ الستريمر $STREAMER_NAME غير متصل.. إرسال شاشة الانتظار الأولى بالعربية..."
+# تشغيل البث المباشر الفعلي من Kick
+start_live_stream() {
+    local M3U8="$1"
+    stop_pids
 
-    # معالجة النص العربي (تشكيل + اتجاه) عبر Python
-    local TEXT_TOP=$(python3 -c "import arabic_reshaper, bidi.algorithm; print(bidi.algorithm.get_display(arabic_reshaper.reshape('جاري انتظار بث الستريمر $STREAMER_NAME')))")
-    local TEXT_BOTTOM=$(python3 -c "import arabic_reshaper, bidi.algorithm; print(bidi.algorithm.get_display(arabic_reshaper.reshape('لم يبدأ البث المباشر بعد...')))")
+    local FF_OPTS="-map 0:v -map 0:a -c:v copy -c:a aac -b:a 192k -ar 44100 -flvflags no_duration_filesize -f flv"
 
-    local VF_FILTER="drawtext=fontfile=${FONT_PATH}:text='${TEXT_TOP}':fontcolor=0xD8B4FE:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2-50:alpha='0.6+0.4*sin(t*3)',drawtext=fontfile=${FONT_PATH}:text='${TEXT_BOTTOM}':fontcolor=0xA855F7:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2+40:alpha='0.4+0.6*cos(t*2)'"
-    local INPUT_FLAGS="-re -f lavfi -i color=c=0x140024:s=1280x720:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo"
-    
-    push_to_destinations "$INPUT_FLAGS" "$VF_FILTER"
+    if [ "$DEST" == "youtube" ]; then
+        ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$M3U8" $FF_OPTS "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
+        PIDS=$!
+    elif [ "$DEST" == "restream" ]; then
+        ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$M3U8" $FF_OPTS "rtmp://live.restream.io/live/$RESTREAM_KEY" &
+        PIDS=$!
+    else
+        ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$M3U8" $FF_OPTS "rtmp://live.restream.io/live/$RESTREAM_KEY" &
+        local PID1=$!
+        ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$M3U8" $FF_OPTS "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
+        local PID2=$!
+        PIDS="$PID1 $PID2"
+    fi
 }
 
-send_stream_crash_screen() {
-    echo "⚠️ انقطع البث من عند $STREAMER_NAME.. إرسال شاشة تعليق البث بالعربية..."
-
-    local TEXT_TOP=$(python3 -c "import arabic_reshaper, bidi.algorithm; print(bidi.algorithm.get_display(arabic_reshaper.reshape('علق البث من قبل الستريمر $STREAMER_NAME')))")
-    local TEXT_BOTTOM=$(python3 -c "import arabic_reshaper, bidi.algorithm; print(bidi.algorithm.get_display(arabic_reshaper.reshape('جاري إعادة الاتصال تلقائياً...')))")
-
-    local VF_FILTER="drawtext=fontfile=${FONT_PATH}:text='${TEXT_TOP}':fontcolor=0xF472B6:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2-50+10*sin(t*4):alpha='0.6+0.4*sin(t*3)',drawtext=fontfile=${FONT_PATH}:text='${TEXT_BOTTOM}':fontcolor=0xE879F9:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2+40:alpha='0.3+0.7*abs(cos(t*2))'"
-    local INPUT_FLAGS="-re -f lavfi -i color=c=0x26001b:s=1280x720:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo"
-
-    push_to_destinations "$INPUT_FLAGS" "$VF_FILTER"
-}
-
-WAS_LIVE=false
-
+# الحلقة الرئيسية للمراقبة
 while true; do
-    KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/devnull | grep "^http")
+    KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/devnull | grep -m1 "^http")
 
     if [ -n "$KICK_M3U8" ]; then
-        echo "✅ الستريمر $STREAMER_NAME متصل الآن! جاري نقل البث المباشر..."
+        echo "✅ الستريمر $STREAMER_NAME متصل الآن!"
         WAS_LIVE=true
 
-        if [ "$DEST" == "youtube" ]; then
-            ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -map 0:v -map 0:a -c:v copy -c:a aac -b:a 192k -ar 44100 \
-              -flvflags no_duration_filesize -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
-
-        elif [ "$DEST" == "restream" ]; then
-            ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -map 0:v -map 0:a -c:v copy -c:a aac -b:a 192k -ar 44100 \
-              -flvflags no_duration_filesize -f flv "rtmp://live.restream.io/live/$RESTREAM_KEY"
-
-        else
-            ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -map 0:v -map 0:a -c:v copy -c:a aac -b:a 192k -ar 44100 \
-              -flvflags no_duration_filesize -f flv "rtmp://live.restream.io/live/$RESTREAM_KEY" &
-
-            ffmpeg -nostdin -fflags +genpts+nobuffer -re -i "$KICK_M3U8" \
-              -map 0:v -map 0:a -c:v copy -c:a aac -b:a 192k -ar 44100 \
-              -flvflags no_duration_filesize -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
-            wait
+        if [ "$STANDBY_RUNNING" = true ]; then
+            stop_pids
+            STANDBY_RUNNING=false
         fi
 
-        echo "⚠️ انقطع البث المباشر!"
+        LIVE_RUNNING=false
+        if [ -n "$PIDS" ]; then
+            LIVE_RUNNING=true
+            for pid in $PIDS; do
+                if ! kill -0 $pid 2>/devnull; then
+                    LIVE_RUNNING=false
+                    break
+                fi
+            done
+        fi
+
+        if [ "$LIVE_RUNNING" = false ]; then
+            echo "🚀 بدء نقل البث المباشر..."
+            start_live_stream "$KICK_M3U8"
+        fi
+
+        sleep 10
     else
         if [ "$WAS_LIVE" = true ]; then
-            send_stream_crash_screen
+            echo "⚠️ انقطع البث من عند $STREAMER_NAME.. عرض شاشة تعليق البث بالعربية..."
+            if [ "$STANDBY_RUNNING" = false ]; then
+                stop_pids
+                start_standby_stream
+                STANDBY_RUNNING=true
+            else
+                for pid in $PIDS; do
+                    if ! kill -0 $pid 2>/devnull; then
+                        start_standby_stream
+                        break
+                    fi
+                done
+            fi
         else
-            send_initial_waiting_screen
+            echo "⏳ الستريمر $STREAMER_NAME غير متصل بعد.. في انتظار خروج الستريمر أونلاين..."
         fi
+        sleep 10
     fi
 done

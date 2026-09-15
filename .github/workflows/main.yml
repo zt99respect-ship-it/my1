@@ -9,7 +9,7 @@ on:
         default: 'W1pey'
       youtube_key:
         description: 'YouTube Stream Key'
-        required: true
+        required: false
         default: ''
       restream_key:
         description: 'Restream Key'
@@ -24,6 +24,10 @@ on:
         required: true
         default: 'best'
 
+concurrency:
+  group: kick-broadcast
+  cancel-in-progress: true
+
 jobs:
   broadcaster:
     runs-on: ubuntu-latest
@@ -35,7 +39,8 @@ jobs:
       - name: تثبيت FFmpeg و Streamlink والخطوط ومكتبات ASS
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg streamlink fonts-noto-core fonts-sil-scheherazade fontconfig
+          sudo apt-get install -y ffmpeg python3-pip fonts-noto-core fonts-sil-scheherazade fontconfig
+          sudo pip3 install --upgrade streamlink
           sudo fc-cache -f -v
 
       - name: تشغيل سكربت البث الشامل

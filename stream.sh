@@ -61,8 +61,9 @@ push_to_destinations() {
 send_initial_waiting_screen() {
     echo "⏳ الستريمر $STREAMER_NAME غير متصل.. إرسال شاشة الانتظار الأولى بالعربية..."
 
-    local TEXT_TOP=$(echo "جاري انتظار بث الستريمر $STREAMER_NAME" | fribidi)
-    local TEXT_BOTTOM=$(echo "لم يبدأ البث المباشر بعد..." | fribidi)
+    # معالجة النص العربي (تشكيل + اتجاه) عبر Python
+    local TEXT_TOP=$(python3 -c "import arabic_reshaper, bidi.algorithm; print(bidi.algorithm.get_display(arabic_reshaper.reshape('جاري انتظار بث الستريمر $STREAMER_NAME')))")
+    local TEXT_BOTTOM=$(python3 -c "import arabic_reshaper, bidi.algorithm; print(bidi.algorithm.get_display(arabic_reshaper.reshape('لم يبدأ البث المباشر بعد...')))")
 
     local VF_FILTER="drawtext=fontfile=${FONT_PATH}:text='${TEXT_TOP}':fontcolor=0xD8B4FE:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2-50:alpha='0.6+0.4*sin(t*3)',drawtext=fontfile=${FONT_PATH}:text='${TEXT_BOTTOM}':fontcolor=0xA855F7:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2+40:alpha='0.4+0.6*cos(t*2)'"
     local INPUT_FLAGS="-re -f lavfi -i color=c=0x140024:s=1280x720:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo"
@@ -73,8 +74,8 @@ send_initial_waiting_screen() {
 send_stream_crash_screen() {
     echo "⚠️ انقطع البث من عند $STREAMER_NAME.. إرسال شاشة تعليق البث بالعربية..."
 
-    local TEXT_TOP=$(echo "علق البث من قبل الستريمر $STREAMER_NAME" | fribidi)
-    local TEXT_BOTTOM=$(echo "جاري إعادة الاتصال تلقائياً..." | fribidi)
+    local TEXT_TOP=$(python3 -c "import arabic_reshaper, bidi.algorithm; print(bidi.algorithm.get_display(arabic_reshaper.reshape('علق البث من قبل الستريمر $STREAMER_NAME')))")
+    local TEXT_BOTTOM=$(python3 -c "import arabic_reshaper, bidi.algorithm; print(bidi.algorithm.get_display(arabic_reshaper.reshape('جاري إعادة الاتصال تلقائياً...')))")
 
     local VF_FILTER="drawtext=fontfile=${FONT_PATH}:text='${TEXT_TOP}':fontcolor=0xF472B6:fontsize=48:x=(w-text_w)/2:y=(h-text_h)/2-50+10*sin(t*4):alpha='0.6+0.4*sin(t*3)',drawtext=fontfile=${FONT_PATH}:text='${TEXT_BOTTOM}':fontcolor=0xE879F9:fontsize=36:x=(w-text_w)/2:y=(h-text_h)/2+40:alpha='0.3+0.7*abs(cos(t*2))'"
     local INPUT_FLAGS="-re -f lavfi -i color=c=0x26001b:s=1280x720:r=30 -f lavfi -i anullsrc=r=44100:cl=stereo"
@@ -85,7 +86,7 @@ send_stream_crash_screen() {
 WAS_LIVE=false
 
 while true; do
-    KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep "^http")
+    KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/devnull | grep "^http")
 
     if [ -n "$KICK_M3U8" ]; then
         echo "✅ الستريمر $STREAMER_NAME متصل الآن! جاري نقل البث المباشر..."

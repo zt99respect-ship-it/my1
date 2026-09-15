@@ -36,12 +36,17 @@ jobs:
       - name: جلب ملفات المستودع
         uses: actions/checkout@v3
 
-      - name: تثبيت FFmpeg و Streamlink والخطوط ومكتبات ASS
+      - name: تثبيت FFmpeg و Streamlink والخطوط العربية
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3-pip fonts-noto-core fonts-sil-scheherazade fontconfig
-          sudo pip3 install --upgrade streamlink
-          sudo fc-cache -f -v
+          sudo apt-get install -y ffmpeg pipx fontconfig \
+            fonts-noto-core fonts-sil-scheherazade fonts-noto-color-emoji
+          pipx install streamlink
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          sudo fc-cache -f
+
+      - name: التحقق من الخطوط المتوفرة
+        run: fc-list : family | grep -iE "noto (naskh|sans) arabic|scheherazade|amiri" | head -5 || true
 
       - name: تشغيل سكربت البث الشامل
         env:

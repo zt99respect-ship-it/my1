@@ -1,38 +1,49 @@
 #!/bin/bash
 
 # ==============================================================================
-# نظام البث المستمر 24/7 مع التبديل الديناميكي بدون انقطاع جلسة RTMP
+# نظام البث المستمر 24/7 المعدل والمحسّن مع فحص المفاتيح والتزامن
 # ==============================================================================
 
-KICK_CHANNEL="${KICK_CHANNEL:-W1pey}"
+KICK_CHANNEL="${KICK_CHANNEL:-OSAMAH}"
 RESTREAM_KEY="${RESTREAM_KEY:-}"
 YOUTUBE_KEY="${YOUTUBE_KEY:-}"
 QUALITY="${STREAM_QUALITY:-best}"
 DEST="${STREAM_DEST:-both}"
 
-# التحقق المبكر من وجود المفاتيح المحددة بناءً على الوجهة
+# معالجة وتنظيف المفاتيح الوهمية مثل X
+if [[ "$YOUTUBE_KEY" == "X" || "$YOUTUBE_KEY" == "x" ]]; then YOUTUBE_KEY=""; fi
+if [[ "$RESTREAM_KEY" == "X" || "$RESTREAM_KEY" == "x" ]]; then RESTREAM_KEY=""; fi
+
+# التحقق من صلاحية المفاتيح حسب الوجهة المختارة
 if [[ "$DEST" == "youtube" || "$DEST" == "both" ]]; then
     if [ -z "$YOUTUBE_KEY" ]; then
-        echo "❌ خطأ: اخترت البث إلى YouTube ولكن YOUTUBE_KEY فارغ!"
-        exit 1
+        if [ "$DEST" == "both" ] && [ -n "$RESTREAM_KEY" ]; then
+            echo "⚠️ مفتاح يوتيوب فارغ أو غير صالح! سيتم تحويل الوجهة تلقائياً إلى Restream فقط."
+            DEST="restream"
+        else
+            echo "❌ خطأ: لم يتم تحديد مفتاح يوتيوب صالح!"
+            exit 1
+        fi
     fi
 fi
 
 if [[ "$DEST" == "restream" || "$DEST" == "both" ]]; then
     if [ -z "$RESTREAM_KEY" ]; then
-        echo "❌ خطأ: اخترت البث إلى Restream ولكن RESTREAM_KEY فارغ!"
-        exit 1
+        if [ "$DEST" == "both" ] && [ -n "$YOUTUBE_KEY" ]; then
+            echo "⚠️ مفتاح ريستريم فارغ أو غير صالح! سيتم تحويل الوجهة تلقائياً إلى YouTube فقط."
+            DEST="youtube"
+        else
+            echo "❌ خطأ: لم يتم تحديد مفتاح ريستريم صالح!"
+            exit 1
+        fi
     fi
 fi
 
 set -u
 
-# التحقق من دعم فلتر libass في FFmpeg
-ffmpeg -filters 2>&1 | grep -q " ass " || { echo "❌ خطأ: دعم libass غير متوفر في نسخة FFmpeg المثبتة!"; exit 1; }
-
 STREAMER_NAME=$(echo "$KICK_CHANNEL" | tr '[:lower:]' '[:upper:]')
 
-# فحص دقيق للخطوط العربية عبر fc-list
+# فحص الخط العربي
 if fc-list : family | grep -qi "Noto Naskh Arabic"; then
     FONT_NAME="Noto Naskh Arabic"
 elif fc-list : family | grep -qi "Scheherazade"; then
@@ -43,10 +54,11 @@ fi
 
 echo "========================================"
 echo "🚀 نظام المراقبة الذكية للقناة: $STREAMER_NAME"
+echo "🎯 وجهة البث المحددة: $DEST"
 echo "🎨 الخط المستخدم للنصوص: $FONT_NAME"
 echo "========================================"
 
-LOCAL_UDP_LISTEN="udp://127.0.0.1:12345?fifo_size=2000000&overrun_nonfatal=1"
+LOCAL_UDP_LISTEN="udp://127.0.0.1:12345?fifo_size=5000000&overrun_nonfatal=1"
 LOCAL_UDP_PUSH="udp://127.0.0.1:12345"
 
 MASTER_PID=""
@@ -54,7 +66,6 @@ FEEDER_PID=""
 CURRENT_MODE="NONE"
 WAS_LIVE=false
 
-# تنظيف العمليات عند إغلاق السكربت أو إلغاء الـ Workflow
 cleanup() {
     echo "🧹 إيقاف جميع العمليات وتنظيف البيئة..."
     trap - EXIT INT TERM
@@ -64,7 +75,6 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# إيقاف عملية المغذي المحلي الحالية
 stop_feeder() {
     if [ -n "$FEEDER_PID" ]; then
         kill -TERM "$FEEDER_PID" 2>/dev/null
@@ -74,31 +84,30 @@ stop_feeder() {
     fi
 }
 
-# تشغيل خادم الترحيل الرئيسي (المسؤول عن إبقاء الاتصال مفتوحاً بـ YouTube/Restream)
 start_master_relay() {
     if [ -n "$MASTER_PID" ] && kill -0 "$MASTER_PID" 2>/dev/null; then
         return 0
     fi
 
-    echo "📡 تشغيل خادم الترحيل الرئيسي (Master Relay) للحفاظ على البث مستمراً..."
+    echo "📡 تشغيل خادم الترحيل الرئيسي (Master Relay)..."
 
+    local INPUT_OPTS="-hide_banner -loglevel error -nostdin -analyzeduration 2000000 -probesize 2000000 -fflags +genpts+discardcorrupt -i $LOCAL_UDP_LISTEN"
     local FF_OPTS="-c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 -keyint_min 60 -sc_threshold 0 -c:a aac -b:a 128k -ar 44100 -flvflags no_duration_filesize"
 
     if [ "$DEST" == "youtube" ]; then
-        ffmpeg -hide_banner -loglevel error -nostdin -re -i "$LOCAL_UDP_LISTEN" $FF_OPTS -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
+        ffmpeg $INPUT_OPTS $FF_OPTS -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
         MASTER_PID=$!
     elif [ "$DEST" == "restream" ]; then
-        ffmpeg -hide_banner -loglevel error -nostdin -re -i "$LOCAL_UDP_LISTEN" $FF_OPTS -f flv "rtmp://live.restream.io/live/$RESTREAM_KEY" &
+        ffmpeg $INPUT_OPTS $FF_OPTS -f flv "rtmp://live.restream.io/live/$RESTREAM_KEY" &
         MASTER_PID=$!
     else
-        ffmpeg -hide_banner -loglevel error -nostdin -re -i "$LOCAL_UDP_LISTEN" \
+        ffmpeg $INPUT_OPTS \
           $FF_OPTS -f flv "rtmp://live.restream.io/live/$RESTREAM_KEY" \
           $FF_OPTS -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY" &
         MASTER_PID=$!
     fi
 }
 
-# توليد ملف شاشة الانتظار الأولية (أوفلاين من البداية)
 generate_initial_ass() {
     cat <<EOF > /tmp/initial_standby.ass
 [Script Info]
@@ -119,7 +128,6 @@ Dialogue: 0,0:00:00.00,9:59:59.99,Subtitle,,0,0,0,,{\fad(600,600)\t(0,1500,\blur
 EOF
 }
 
-# توليد ملف شاشة تعليق البث (عند الانقطاع بعد الأونلاين)
 generate_crash_ass() {
     cat <<EOF > /tmp/crash_standby.ass
 [Script Info]
@@ -140,7 +148,6 @@ Dialogue: 0,0:00:00.00,9:59:59.99,Subtitle,,0,0,0,,{\fad(600,600)\t(0,1500,\blur
 EOF
 }
 
-# تغذية شاشة الانتظار الأولية
 start_initial_standby_feeder() {
     generate_initial_ass
     stop_feeder
@@ -148,13 +155,12 @@ start_initial_standby_feeder() {
       -re -f lavfi -i color=c=0x140024:s=1280x720:r=30 \
       -f lavfi -i anullsrc=r=44100:cl=stereo -shortest \
       -vf "ass=/tmp/initial_standby.ass" \
-      -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 60 \
+      -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 60 -bsf:v h264_mp4toannexb \
       -c:a aac -b:a 128k -ar 44100 \
       -f mpegts "$LOCAL_UDP_PUSH" &
     FEEDER_PID=$!
 }
 
-# تغذية شاشة انقطاع البث
 start_crash_standby_feeder() {
     generate_crash_ass
     stop_feeder
@@ -162,30 +168,32 @@ start_crash_standby_feeder() {
       -re -f lavfi -i color=c=0x26001b:s=1280x720:r=30 \
       -f lavfi -i anullsrc=r=44100:cl=stereo -shortest \
       -vf "ass=/tmp/crash_standby.ass" \
-      -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 60 \
+      -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 60 -bsf:v h264_mp4toannexb \
       -c:a aac -b:a 128k -ar 44100 \
       -f mpegts "$LOCAL_UDP_PUSH" &
     FEEDER_PID=$!
 }
 
-# تغذية البث المباشر من Kick
 start_live_feeder() {
     local M3U8="$1"
     stop_feeder
     ffmpeg -hide_banner -loglevel error -nostdin \
       -fflags +genpts+nobuffer -re -i "$M3U8" \
       -vf scale=1280:720 \
-      -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 60 \
+      -c:v libx264 -preset ultrafast -pix_fmt yuv420p -g 60 -bsf:v h264_mp4toannexb \
       -c:a aac -b:a 128k -ar 44100 \
       -f mpegts "$LOCAL_UDP_PUSH" &
     FEEDER_PID=$!
 }
 
-# الحلقة الرئيسية للمراقبة والتبديل المباشر
+# تشغيل البث الأولي قبل حلقة المراقبة لضمان وجود بث على UDP
+start_initial_standby_feeder
+CURRENT_MODE="INITIAL_STANDBY"
+sleep 2
+
 while true; do
     KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep -m1 "^http")
 
-    # ضمان استمرار عمل خادم الترحيل الرئيسي
     start_master_relay
 
     if [ -n "$KICK_M3U8" ]; then

@@ -34,8 +34,8 @@ jobs:
       - name: تثبيت FFmpeg و Streamlink والخطوط والمكتبات العربية
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3-pip fonts-sil-scheherazade fonts-dejavu-core libfribidi-bin
-          sudo pip3 install --upgrade streamlink
+          sudo apt-get install -y ffmpeg python3-pip fonts-sil-scheherazade fonts-dejavu-core
+          sudo pip3 install --upgrade streamlink arabic_reshaper python-bidi
 
       - name: تشغيل سكربت البث الشامل
         env:

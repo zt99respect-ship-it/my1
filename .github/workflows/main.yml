@@ -31,10 +31,10 @@ jobs:
       - name: جلب ملفات المستودع
         uses: actions/checkout@v3
 
-      - name: تثبيت FFmpeg و Streamlink والخطوط
+      - name: تثبيت FFmpeg و Streamlink والخطوط العربية
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3-pip fonts-dejavu-core
+          sudo apt-get install -y ffmpeg python3-pip fonts-sil-scheherazade fonts-dejavu-core
           sudo pip3 install --upgrade streamlink
 
       - name: تشغيل سكربت البث الشامل

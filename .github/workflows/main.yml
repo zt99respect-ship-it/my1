@@ -50,7 +50,7 @@ jobs:
         env:
           KICK_CHANNEL: ${{ github.event.inputs.kick_channel || 'PEERLESS' }}
           YOUTUBE_KEY: ${{ github.event.inputs.youtube_key || '' }}
-          RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12215822_event2750b7e4ab484ce4acb7c7db2e7d0534' }}
+          RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69' }}
           STREAM_DEST: ${{ github.event.inputs.destination || 'restream' }}
           STREAM_QUALITY: ${{ github.event.inputs.quality || 'best' }}
         run: |

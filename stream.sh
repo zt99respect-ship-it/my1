@@ -4,7 +4,7 @@
 # نظام البث المستمر 24/7 - البث المباشر بأعلى جودة وسلاسة فريمات (1080p60)
 # ==============================================================================
 
-KICK_CHANNEL="${KICK_CHANNEL:-OGABDULLAH}"
+KICK_CHANNEL="${KICK_CHANNEL:-PEERLESS}"
 RESTREAM_KEY="${RESTREAM_KEY:-}"
 YOUTUBE_KEY="${YOUTUBE_KEY:-}"
 QUALITY="${STREAM_QUALITY:-best}"
@@ -85,7 +85,7 @@ start_standby_stream() {
     OUTPUTS=$(get_outputs)
     ffmpeg -hide_banner -loglevel warning -nostdin \
       -re -f lavfi -i color=c=0x140024:s=1920x1080:r=60 \
-      -f lavfi -i anullsrc=r=44100:cl=stereo -shortest \
+      -f lavfi -i anullsrc=r=44100:cl=stereo \
       -vf "ass=/tmp/initial_standby.ass" \
       -c:v libx264 -preset superfast -tune zerolatency -pix_fmt yuv420p -r 60 -g 120 -b:v 3500k \
       -c:a aac -b:a 128k -ar 44100 \

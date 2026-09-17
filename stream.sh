@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# نظام البث المستمر 24/7 - البث المباشر بأعلى جودة وسلاسة فريمات (1080p60)
+# نظام البث المستمر 24/7 - البث المباشر بأعلى جودة مع موسيقى انتظار مكررة
 # ==============================================================================
 
 KICK_CHANNEL="${KICK_CHANNEL:-PEERLESS}"
@@ -81,11 +81,25 @@ EOF
 start_standby_stream() {
     generate_initial_ass
     stop_stream
+    
+    # التحقق من وجود ملف الصوت وقراءته بشكل مكرر مستمر (-stream_loop -1)
+    if [ -f "music.mp3" ]; then
+        echo "🎵 تم العثور على music.mp3 - جاري تشغيل الموسيقى بشكل تكراري..."
+        AUDIO_INPUT="-stream_loop -1 -i music.mp3"
+    elif [ -f "standby.mp3" ]; then
+        echo "🎵 تم العثور على standby.mp3 - جاري تشغيل الموسيقى بشكل تكراري..."
+        AUDIO_INPUT="-stream_loop -1 -i standby.mp3"
+    else
+        echo "🔇 لم يتم العثور على ملف موسيقى - جاري استخدام الصوت الصامت..."
+        AUDIO_INPUT="-f lavfi -i anullsrc=r=44100:cl=stereo"
+    fi
+
     echo "⏳ بدء بث شاشة الانتظار إلى الوجهة المحددة (1080p60)..."
     OUTPUTS=$(get_outputs)
+    
     ffmpeg -hide_banner -loglevel warning -nostdin \
       -re -f lavfi -i color=c=0x140024:s=1920x1080:r=60 \
-      -f lavfi -i anullsrc=r=44100:cl=stereo \
+      $AUDIO_INPUT \
       -vf "ass=/tmp/initial_standby.ass" \
       -c:v libx264 -preset superfast -tune zerolatency -pix_fmt yuv420p -r 60 -g 120 -b:v 3500k \
       -c:a aac -b:a 128k -ar 44100 \

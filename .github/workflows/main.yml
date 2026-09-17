@@ -39,19 +39,18 @@ jobs:
       - name: جلب ملفات المستودع
         uses: actions/checkout@v3
 
-      - name: تثبيت FFmpeg و Streamlink والخطوط
+      - name: تثبيت FFmpeg و Streamlink والخطوط والمكتبات
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg python3-pip fonts-noto-core fonts-sil-scheherazade fontconfig
+          sudo apt-get install -y ffmpeg python3-pip fonts-noto-core fonts-sil-scheherazade fontconfig libass-dev
           sudo pip3 install --upgrade streamlink
           sudo fc-cache -f -v
 
       - name: تشغيل سكربت البث الشامل
         env:
-          # استخدام القيم الافتراضية في حال كان التشغيل التلقائي (Cron) هو من بدأ العملية
-          KICK_CHANNEL: ${{ github.event.inputs.kick_channel || 'OSAMAH' }}
+          KICK_CHANNEL: ${{ github.event.inputs.kick_channel || 'PEERLESS' }}
           YOUTUBE_KEY: ${{ github.event.inputs.youtube_key || '' }}
-          RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12215822_event12d2d60d5f814c68b3c0f0137cacab10' }}
+          RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12215822_event2750b7e4ab484ce4acb7c7db2e7d0534' }}
           STREAM_DEST: ${{ github.event.inputs.destination || 'restream' }}
           STREAM_QUALITY: ${{ github.event.inputs.quality || 'best' }}
         run: |

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# نظام البث المستمر 24/7 - البث المباشر بأعلى جودة (بدون موسيقى)
+# نظام البث المستمر 24/7 - البث المباشر بأعلى جودة (مصلح ضد Segmentation fault)
 # ==============================================================================
 
 KICK_CHANNEL="${KICK_CHANNEL:-PEERLESS}"
@@ -16,18 +16,16 @@ if [[ "$RESTREAM_KEY" == "X" || "$RESTREAM_KEY" == "x" ]]; then RESTREAM_KEY="";
 
 STREAMER_NAME=$(echo "$KICK_CHANNEL" | tr '[:lower:]' '[:upper:]')
 
-if fc-list : family | grep -qi "Noto Naskh Arabic"; then
-    FONT_NAME="Noto Naskh Arabic"
-elif fc-list : family | grep -qi "Scheherazade"; then
-    FONT_NAME="Scheherazade New"
-else
-    FONT_NAME="Sans"
+# جلب مسار ملف الخط بشكل مباشر ومستقر
+FONT_PATH=$(fc-match --format="%{file}" "Noto Naskh Arabic" 2>/dev/null)
+if [ -z "$FONT_PATH" ] || [ ! -f "$FONT_PATH" ]; then
+    FONT_PATH="/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
 fi
 
 echo "========================================"
 echo "🚀 نظام المراقبة الذكية للقناة: $STREAMER_NAME"
 echo "🎯 وجهة البث المحددة: $DEST"
-echo "🎨 الخط المستخدم للنصوص: $FONT_NAME"
+echo "🎨 مسار الخط المستخدم: $FONT_PATH"
 echo "========================================"
 
 STREAM_PID=""
@@ -58,38 +56,20 @@ get_outputs() {
     fi
 }
 
-generate_initial_ass() {
-    cat <<EOF > /tmp/initial_standby.ass
-[Script Info]
-ScriptType: v4.00+
-PlayResX: 1920
-PlayResY: 1080
-ScaledBorderAndShadow: yes
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Title,$FONT_NAME,60,&H00FEB4D8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,420,1
-Style: Subtitle,$FONT_NAME,40,&H00F755A8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,520,1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:00.00,9:59:59.99,Title,,0,0,0,,{\fad(600,600)}لم يبدأ البث المباشر بعد...
-Dialogue: 0,0:00:00.00,9:59:59.99,Subtitle,,0,0,0,,{\fad(600,600)}جاري انتظار الستريمر ${STREAMER_NAME}
-EOF
-}
-
 start_standby_stream() {
-    generate_initial_ass
     stop_stream
 
     echo "⏳ بدء بث شاشة الانتظار إلى الوجهة المحددة (1080p60)..."
     OUTPUTS=$(get_outputs)
 
+    # استخدام drawtext المدمج المستقر بدلاً من ass لمنع خطأ Segmentation fault
+    VF_TEXT="drawtext=fontfile='$FONT_PATH':text='لم يبدأ البث المباشر بعد...':fontcolor=0xFFFEB4D8:fontsize=55:x=(w-text_w)/2:y=(h-text_h)/2-50,drawtext=fontfile='$FONT_PATH':text='جاري انتظار الستريمر ${STREAMER_NAME}':fontcolor=0xFFF755A8:fontsize=38:x=(w-text_w)/2:y=(h-text_h)/2+40"
+
     ffmpeg -hide_banner -loglevel error -nostdin \
       -re -f lavfi -i color=c=0x140024:s=1920x1080:r=60 \
       -f lavfi -i anullsrc=r=44100:cl=stereo \
       -map 0:v:0 -map 1:a:0 \
-      -vf "ass=/tmp/initial_standby.ass" \
+      -vf "$VF_TEXT" \
       -c:v libx264 -preset superfast -tune zerolatency -pix_fmt yuv420p -r 60 -g 120 -b:v 3500k \
       -c:a aac -b:a 128k -ar 44100 \
       -flvflags no_duration_filesize \

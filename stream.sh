@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# نظام البث المستمر 24/7 - البث المباشر بأعلى جودة (مؤمن ضد Segmentation fault)
+# نظام البث المستمر 24/7 - البث المباشر بأعلى جودة (محلول جذرياً لجميع المشاكل)
 # ==============================================================================
 
 KICK_CHANNEL="${KICK_CHANNEL:-PEERLESS}"
@@ -28,20 +28,33 @@ echo "🎯 وجهة البث المحددة: $DEST"
 echo "🎨 مسار الخط المستخدم: $FONT_PATH"
 echo "========================================"
 
+# التحقق من وجود مفاتيح البث قبل البدء
+if [ "$DEST" == "restream" ] && [ -z "$RESTREAM_KEY" ]; then
+    echo "❌ خطأ قاتل: مفتاح Restream غير موجود! يرجى التأكد من ضبط RESTREAM_KEY في Secrets."
+    exit 1
+fi
+
+if [ "$DEST" == "youtube" ] && [ -z "$YOUTUBE_KEY" ]; then
+    echo "❌ خطأ قاتل: مفتاح YouTube غير موجود! يرجى التأكد من ضبط YOUTUBE_KEY في Secrets."
+    exit 1
+fi
+
 STREAM_PID=""
 CURRENT_MODE="NONE"
 
-# تثبيت pillow لإنشاء صورة شاشة الانتظار بدقة عالية
+# تثبيت المكتبات المطلوبة لإنشاء الصورة والصوت الصامت
 python3 -m pip install --quiet pillow 2>/dev/null
 
-generate_standby_image() {
+# إنشاء صورة الانتظار وصوت صامت نقي عبر Python
+generate_standby_assets() {
     python3 -c "
 from PIL import Image, ImageDraw, ImageFont
-import sys
+import wave, struct, sys
 
 streamer = sys.argv[1]
 font_path = sys.argv[2]
 
+# إنشاء صورة الانتظار
 img = Image.new('RGB', (1920, 1080), color='#140024')
 draw = ImageDraw.Draw(img)
 
@@ -61,6 +74,13 @@ draw.text(((1920 - (b1[2]-b1[0]))/2, 480 - (b1[3]-b1[1])/2), text1, fill='#FEB4D
 draw.text(((1920 - (b2[2]-b2[0]))/2, 580 - (b2[3]-b2[1])/2), text2, fill='#F755A8', font=font_sub)
 
 img.save('/tmp/standby.png')
+
+# إنشاء ملف صوت WAV صامت حقيقي لتفادي أخطاء lavfi anullsrc
+with wave.open('/tmp/silent.wav', 'w') as wav_file:
+    wav_file.setnchannels(2)
+    wav_file.setsampwidth(2)
+    wav_file.setframerate(44100)
+    wav_file.writeframes(struct.pack('<h', 0) * (44100 * 2 * 2))
 " "$STREAMER_NAME" "$FONT_PATH"
 }
 
@@ -92,16 +112,16 @@ get_outputs() {
 start_standby_stream() {
     stop_stream
 
-    # إنشاء صورة شاشة الانتظار
-    generate_standby_image
+    # إنشاء الصورة وملف الصوت الصامت
+    generate_standby_assets
 
     echo "⏳ بدء بث شاشة الانتظار إلى الوجهة المحددة (1080p60)..."
     OUTPUTS=$(get_outputs)
 
-    # قراءة الصورة بدون الحاجة لأي فلاتر فيديو مسببة للأخطاء
+    # استخدام ملف صوت WAV حقيقي وبمعدل إطارات محدد لتفادي الـ Segmentation Fault
     ffmpeg -hide_banner -loglevel error -nostdin \
-      -re -loop 1 -i /tmp/standby.png \
-      -f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=44100" \
+      -re -framerate 60 -loop 1 -i /tmp/standby.png \
+      -stream_loop -1 -i /tmp/silent.wav \
       -map 0:v:0 -map 1:a:0 \
       -c:v libx264 -preset superfast -tune zerolatency -pix_fmt yuv420p -r 60 -g 120 -b:v 3500k \
       -c:a aac -b:a 128k -ar 44100 \

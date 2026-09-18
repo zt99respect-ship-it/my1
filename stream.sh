@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# نظام البث المستمر 24/7 - البث المباشر بأعلى جودة (مصلح ضد Segmentation fault)
+# نظام البث المستمر 24/7 - البث المباشر بأعلى جودة (مؤمن ضد Segmentation fault)
 # ==============================================================================
 
 KICK_CHANNEL="${KICK_CHANNEL:-PEERLESS}"
@@ -16,7 +16,7 @@ if [[ "$RESTREAM_KEY" == "X" || "$RESTREAM_KEY" == "x" ]]; then RESTREAM_KEY="";
 
 STREAMER_NAME=$(echo "$KICK_CHANNEL" | tr '[:lower:]' '[:upper:]')
 
-# جلب مسار ملف الخط بشكل مباشر ومستقر
+# جلب مسار ملف الخط
 FONT_PATH=$(fc-match --format="%{file}" "Noto Naskh Arabic" 2>/dev/null)
 if [ -z "$FONT_PATH" ] || [ ! -f "$FONT_PATH" ]; then
     FONT_PATH="/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"
@@ -30,6 +30,39 @@ echo "========================================"
 
 STREAM_PID=""
 CURRENT_MODE="NONE"
+
+# تثبيت pillow لإنشاء صورة شاشة الانتظار بدقة عالية
+python3 -m pip install --quiet pillow 2>/dev/null
+
+generate_standby_image() {
+    python3 -c "
+from PIL import Image, ImageDraw, ImageFont
+import sys
+
+streamer = sys.argv[1]
+font_path = sys.argv[2]
+
+img = Image.new('RGB', (1920, 1080), color='#140024')
+draw = ImageDraw.Draw(img)
+
+try:
+    font_title = ImageFont.truetype(font_path, 55)
+    font_sub = ImageFont.truetype(font_path, 38)
+except Exception:
+    font_title = font_sub = ImageFont.load_default()
+
+text1 = 'لم يبدأ البث المباشر بعد...'
+text2 = f'جاري انتظار الستريمر {streamer}'
+
+b1 = draw.textbbox((0, 0), text1, font=font_title)
+b2 = draw.textbbox((0, 0), text2, font=font_sub)
+
+draw.text(((1920 - (b1[2]-b1[0]))/2, 480 - (b1[3]-b1[1])/2), text1, fill='#FEB4D8', font=font_title)
+draw.text(((1920 - (b2[2]-b2[0]))/2, 580 - (b2[3]-b2[1])/2), text2, fill='#F755A8', font=font_sub)
+
+img.save('/tmp/standby.png')
+" "$STREAMER_NAME" "$FONT_PATH"
+}
 
 cleanup() {
     echo "🧹 إيقاف عمليات البث..."
@@ -59,17 +92,17 @@ get_outputs() {
 start_standby_stream() {
     stop_stream
 
+    # إنشاء صورة شاشة الانتظار
+    generate_standby_image
+
     echo "⏳ بدء بث شاشة الانتظار إلى الوجهة المحددة (1080p60)..."
     OUTPUTS=$(get_outputs)
 
-    # استخدام drawtext المدمج المستقر بدلاً من ass لمنع خطأ Segmentation fault
-    VF_TEXT="drawtext=fontfile='$FONT_PATH':text='لم يبدأ البث المباشر بعد...':fontcolor=0xFFFEB4D8:fontsize=55:x=(w-text_w)/2:y=(h-text_h)/2-50,drawtext=fontfile='$FONT_PATH':text='جاري انتظار الستريمر ${STREAMER_NAME}':fontcolor=0xFFF755A8:fontsize=38:x=(w-text_w)/2:y=(h-text_h)/2+40"
-
+    # قراءة الصورة بدون الحاجة لأي فلاتر فيديو مسببة للأخطاء
     ffmpeg -hide_banner -loglevel error -nostdin \
-      -re -f lavfi -i color=c=0x140024:s=1920x1080:r=60 \
-      -f lavfi -i anullsrc=r=44100:cl=stereo \
+      -re -loop 1 -i /tmp/standby.png \
+      -f lavfi -i "anullsrc=channel_layout=stereo:sample_rate=44100" \
       -map 0:v:0 -map 1:a:0 \
-      -vf "$VF_TEXT" \
       -c:v libx264 -preset superfast -tune zerolatency -pix_fmt yuv420p -r 60 -g 120 -b:v 3500k \
       -c:a aac -b:a 128k -ar 44100 \
       -flvflags no_duration_filesize \

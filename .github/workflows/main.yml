@@ -6,7 +6,7 @@ on:
       kick_channel:
         description: 'اسم قناة كيك (Kick Channel)'
         required: true
-        default: 'drb7h'
+        default: 'S5B'
       youtube_key:
         description: 'مفتاح بث يوتيوب (تأكّد من إدخاله صح)'
         required: false
@@ -14,7 +14,7 @@ on:
       restream_key:
         description: 'مفتاح بث ريستريم'
         required: false
-        default: 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69'
+        default: 're_12394408_event6b84ba417d8c4f5a87daa60a938253b0'
       destination:
         description: 'وجهة البث (youtube, restream, both)'
         required: true

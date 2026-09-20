@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # ==============================================================================
-# نظام إعادة البث المباشر المباشر (Kick -> Restream / YouTube)
+# نظام البث المستمر 24/7 - البث المباشر بأعلى جودة (بدون انقطاع)
 # ==============================================================================
 
-KICK_CHANNEL="${KICK_CHANNEL:-PEERLESS}"
+KICK_CHANNEL="${KICK_CHANNEL:-}"
 RESTREAM_KEY="${RESTREAM_KEY:-}"
 YOUTUBE_KEY="${YOUTUBE_KEY:-}"
 QUALITY="${STREAM_QUALITY:-best}"
@@ -16,21 +16,23 @@ if [[ "$RESTREAM_KEY" == "X" || "$RESTREAM_KEY" == "x" ]]; then RESTREAM_KEY="";
 
 STREAMER_NAME=$(echo "$KICK_CHANNEL" | tr '[:lower:]' '[:upper:]')
 
-echo "========================================"
-echo "🚀 نظام المراقبة المباشر للقناة: $STREAMER_NAME"
-echo "🎯 وجهة البث المحددة: $DEST"
-echo "========================================"
-
-# التحقق من مفاتيح البث
-if [ "$DEST" == "restream" ] && [ -z "$RESTREAM_KEY" ]; then
-    echo "❌ خطأ قاتل: مفتاح Restream فارغ! يرجى إضافة RESTREAM_KEY في Secrets."
-    exit 1
-elif [ "$DEST" == "youtube" ] && [ -z "$YOUTUBE_KEY" ]; then
-    echo "❌ خطأ قاتل: مفتاح YouTube فارغ! يرجى إضافة YOUTUBE_KEY في Secrets."
-    exit 1
+# تحديد الخط المناسب للعربية
+if fc-list : family | grep -qi "Noto Naskh Arabic"; then
+    FONT_NAME="Noto Naskh Arabic"
+elif fc-list : family | grep -qi "Scheherazade"; then
+    FONT_NAME="Scheherazade New"
+else
+    FONT_NAME="Sans"
 fi
 
+echo "========================================"
+echo "🚀 نظام المراقبة الذكية للقناة: $STREAMER_NAME"
+echo "🎯 وجهة البث المحددة: $DEST"
+echo "🎨 الخط المستخدم للنصوص: $FONT_NAME"
+echo "========================================"
+
 STREAM_PID=""
+CURRENT_MODE="NONE"
 
 cleanup() {
     echo "🧹 إيقاف عمليات البث..."
@@ -57,13 +59,54 @@ get_outputs() {
     fi
 }
 
+generate_initial_ass() {
+    cat <<EOF > /tmp/initial_standby.ass
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Title,$FONT_NAME,60,&H00FEB4D8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,420,1
+Style: Subtitle,$FONT_NAME,40,&H00F755A8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,520,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,9:59:59.99,Title,,0,0,0,,{\fad(600,600)}لم يبدأ البث المباشر بعد...
+Dialogue: 0,0:00:00.00,9:59:59.99,Subtitle,,0,0,0,,{\fad(600,600)}جاري انتظار الستريمر ${STREAMER_NAME}
+EOF
+}
+
+start_standby_stream() {
+    generate_initial_ass
+    stop_stream
+
+    echo "⏳ بدء بث شاشة الانتظار إلى الوجهة المحددة (1080p60)..."
+    OUTPUTS=$(get_outputs)
+
+    ffmpeg -hide_banner -loglevel error -nostdin \
+      -re -f lavfi -i color=c=0x140024:s=1920x1080:r=60 \
+      -f lavfi -i anullsrc=r=44100:cl=stereo \
+      -map 0:v:0 -map 1:a:0 \
+      -vf "ass=/tmp/initial_standby.ass" \
+      -c:v libx264 -preset superfast -tune zerolatency -pix_fmt yuv420p -r 60 -g 120 -b:v 3500k \
+      -c:a aac -b:a 128k -ar 44100 \
+      -flvflags no_duration_filesize \
+      $OUTPUTS >/tmp/ffmpeg.log 2>&1 &
+    STREAM_PID=$!
+}
+
 start_live_stream() {
     local M3U8="$1"
     stop_stream
-    echo "🔴 الستريمر $STREAMER_NAME أونلاين! بدء البث المباشر فوراً..."
+    echo "🔴 بدء إعادة بث القناة المباشرة بأعلى جودة وسلاسة (1080p60)..."
     OUTPUTS=$(get_outputs)
     
-    ffmpeg -hide_banner -loglevel info -nostdin \
+    # إضافة خيارات Reconnect لتفادي أي انقطاع في الشبكة أثناء جلب بث Kick
+    ffmpeg -hide_banner -loglevel error -nostdin \
+      -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
       -fflags +genpts -i "$M3U8" \
       -c:v libx264 -preset superfast -tune zerolatency -pix_fmt yuv420p -r 60 -g 120 \
       -b:v 6000k -maxrate 6000k -bufsize 12000k \
@@ -73,23 +116,32 @@ start_live_stream() {
     STREAM_PID=$!
 }
 
+# مهلة قصيرة (2 ثانية) لمنح السيرفر الفرصة لتفريغ منفذ RTMP بعد إغلاق الجلسة القديمة
+sleep 2
+
 while true; do
     KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep -m1 "^http")
 
     if [ -n "$KICK_M3U8" ]; then
-        if [ -z "$STREAM_PID" ] || ! kill -0 "$STREAM_PID" 2>/dev/null; then
+        if [ "$CURRENT_MODE" != "LIVE" ] || ! kill -0 "$STREAM_PID" 2>/dev/null; then
             if [ -n "$STREAM_PID" ] && ! kill -0 "$STREAM_PID" 2>/dev/null; then
-                echo "⚠️ توقف البث المباشر! تفاصيل الخطأ:"
-                [ -f /tmp/ffmpeg.log ] && tail -n 20 /tmp/ffmpeg.log
+                echo "⚠️ توقف البث المباشر السابق! تفاصيل الخطأ:"
+                [ -f /tmp/ffmpeg.log ] && tail -n 15 /tmp/ffmpeg.log
             fi
+            echo "✅ الستريمر $STREAMER_NAME أونلاين! التبديل للبث المباشر..."
             start_live_stream "$KICK_M3U8"
+            CURRENT_MODE="LIVE"
         fi
     else
-        if [ -n "$STREAM_PID" ]; then
-            echo "⏹️ أوفلاين: الستريمر أوقف البث المباشر. إيقاف التوجيه والانتظار..."
-            stop_stream
+        if [ "$CURRENT_MODE" != "STANDBY" ] || ! kill -0 "$STREAM_PID" 2>/dev/null; then
+            if [ -n "$STREAM_PID" ] && ! kill -0 "$STREAM_PID" 2>/dev/null; then
+                echo "⚠️ توقف بث الانتظار السابق! تفاصيل الخطأ:"
+                [ -f /tmp/ffmpeg.log ] && tail -n 15 /tmp/ffmpeg.log
+            fi
+            echo "⏳ الستريمر $STREAMER_NAME غير متصل.. عرض شاشة الانتظار..."
+            start_standby_stream
+            CURRENT_MODE="STANDBY"
         fi
-        echo "⏳ الستريمر $STREAMER_NAME أوفلاين حالياً.. جاري الفحص المستمر كل 10 ثوانٍ..."
     fi
 
     sleep 10

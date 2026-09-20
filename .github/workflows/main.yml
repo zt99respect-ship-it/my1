@@ -6,15 +6,15 @@ on:
       kick_channel:
         description: 'اسم قناة كيك (Kick Channel)'
         required: true
-        default: 'Fhlwy'
+        default: 'iMonkey_D'
       youtube_key:
-        description: 'مفتاح بث يوتيوب (تأكّد من إدخاله صح)'
+        description: 'مفتاح بث يوتيوب'
         required: false
         default: ''
       restream_key:
         description: 'مفتاح بث ريستريم'
         required: false
-        default: 're_12394408_event6b84ba417d8c4f5a87daa60a938253b0'
+        default: 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69'
       destination:
         description: 'وجهة البث (youtube, restream, both)'
         required: true
@@ -24,17 +24,19 @@ on:
         required: true
         default: 'best'
   schedule:
-    # تشغيل تلقائي كل 5 ساعات لضمان استمرارية البث وتخطي حد الـ 6 ساعات
+    # تشغيل تلقائي كل 5 ساعات
     - cron: '0 */5 * * *'
 
-concurrency:
-  group: kick-broadcast
-  cancel-in-progress: true
+# إعطاء صلاحية للأمر gh لإلغاء الرون القديم تلقائياً
+permissions:
+  actions: write
+  contents: read
 
 jobs:
   broadcaster:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 320 # إعطاء مهلة إضافية للبث القديم لكي لا يطفى قبل وصول الجديد
+
     steps:
       - name: جلب ملفات المستودع
         uses: actions/checkout@v3
@@ -46,6 +48,17 @@ jobs:
           sudo pip3 install --upgrade streamlink
           sudo fc-cache -f -v
 
+      - name: إغلاق الرون القديم (بعد التثبيت مباشرة وقبل بدء البث)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CURRENT_RUN_ID="${{ github.run_id }}"
+          OLD_RUNS=$(gh run list --workflow="main.yml" --status=in_progress --json databaseId -q ".[].databaseId" | grep -v "$CURRENT_RUN_ID" || true)
+          for RUN_ID in $OLD_RUNS; do
+            echo "🛑 إيقاف الرون القديم رقم: $RUN_ID"
+            gh run cancel "$RUN_ID" || true
+          done
+
       - name: تشغيل سكربت البث الشامل
         env:
           KICK_CHANNEL: ${{ github.event.inputs.kick_channel || 'PEERLESS' }}
@@ -56,3 +69,4 @@ jobs:
         run: |
           chmod +x stream.sh
           ./stream.sh
+

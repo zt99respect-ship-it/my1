@@ -61,7 +61,7 @@ jobs:
 
       - name: تشغيل سكربت البث الشامل
         env:
-          KICK_CHANNEL: ${{ github.event.inputs.kick_channel || 'PEERLESS' }}
+          KICK_CHANNEL: ${{ github.event.inputs.kick_channel || 'iMonkey_D' }}
           YOUTUBE_KEY: ${{ github.event.inputs.youtube_key || '' }}
           RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69' }}
           STREAM_DEST: ${{ github.event.inputs.destination || 'restream' }}

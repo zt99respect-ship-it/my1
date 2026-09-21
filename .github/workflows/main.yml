@@ -6,7 +6,7 @@ on:
       kick_channel:
         description: 'اسم قناة كيك (Kick Channel)'
         required: true
-        default: 'iMonkey_D'
+        default: 'majah92'
       youtube_key:
         description: 'مفتاح بث يوتيوب'
         required: false
@@ -39,13 +39,13 @@ jobs:
 
     steps:
       - name: جلب ملفات المستودع
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: تثبيت FFmpeg و Streamlink والخطوط والمكتبات
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg python3-pip fonts-noto-core fonts-sil-scheherazade fontconfig libass-dev
-          sudo pip3 install --upgrade streamlink
+          sudo pip3 install --upgrade streamlink yt-dlp
           sudo fc-cache -f -v
 
       - name: إغلاق الرون القديم (بعد التثبيت مباشرة وقبل بدء البث)
@@ -61,7 +61,7 @@ jobs:
 
       - name: تشغيل سكربت البث الشامل
         env:
-          KICK_CHANNEL: ${{ github.event.inputs.kick_channel || 'iMonkey_D' }}
+          KICK_CHANNEL: ${{ github.event.inputs.kick_channel || 'majah92' }}
           YOUTUBE_KEY: ${{ github.event.inputs.youtube_key || '' }}
           RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69' }}
           STREAM_DEST: ${{ github.event.inputs.destination || 'restream' }}
@@ -69,4 +69,3 @@ jobs:
         run: |
           chmod +x stream.sh
           ./stream.sh
-

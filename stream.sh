@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# نظام البث المستمر 24/7 - البث المباشر بأعلى جودة (محسّن وبدون تغبيش)
+# نظام البث المستمر 24/7 - النسخة المحسنة للاستقرار والتصفية الخفيفة (خوادم GitHub)
 # ==============================================================================
 
 KICK_CHANNEL="${KICK_CHANNEL:-}"
@@ -90,8 +90,8 @@ start_standby_stream() {
       -re -f lavfi -i color=c=0x140024:s=1920x1080:r=60 \
       -f lavfi -i anullsrc=r=44100:cl=stereo \
       -map 0:v:0 -map 1:a:0 \
-      -vf "ass=/tmp/initial_standby.ass,fps=60" \
-      -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 60 -g 120 -b:v 4000k \
+      -vf "ass=/tmp/initial_standby.ass" \
+      -c:v libx264 -preset superfast -tune zerolatency -pix_fmt yuv420p -r 60 -g 120 -b:v 3500k \
       -c:a aac -b:a 128k -ar 44100 \
       -flvflags no_duration_filesize \
       $OUTPUTS >/tmp/ffmpeg.log 2>&1 &
@@ -101,27 +101,26 @@ start_standby_stream() {
 start_live_stream() {
     local M3U8="$1"
     stop_stream
-    echo "🔴 بدء إعادة بث القناة المباشرة بأعلى جودة وإزالة التغبيش (1080p60)..."
+    echo "🔴 بدء إعادة بث القناة المباشرة بأعلى سلاسة وتطبيق الفلاتر..."
     OUTPUTS=$(get_outputs)
-    
-    # إضافة الفلاتر ورفع معدل البيانات وتثبيت 60 فريم مع إزالة التغبيش
+
+    # فلاتر خفيفة وسريعة تناسب معالج GitHub Actions وتمنع الانقطاع مع رفع الألوان والحدة
     ffmpeg -hide_banner -loglevel error -nostdin \
       -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
-      -fflags +genpts -i "$M3U8" \
-      -vf "fps=60,scale=1920:1080:flags=lanczos,unsharp=5:5:0.8:5:5:0.0,eq=contrast=1.08:saturation=1.18" \
-      -c:v libx264 -preset veryfast -pix_fmt yuv420p -r 60 -g 120 \
-      -b:v 6500k -maxrate 7500k -bufsize 13000k \
+      -fflags +genpts+discardcorrupt -i "$M3U8" \
+      -vf "fps=60,unsharp=3:3:0.8:3:3:0.0,eq=contrast=1.12:saturation=1.25" \
+      -c:v libx264 -preset superfast -tune zerolatency -pix_fmt yuv420p -r 60 -g 120 \
+      -b:v 5000k -maxrate 5500k -bufsize 10000k \
       -c:a aac -b:a 160k -ar 44100 \
       -flvflags no_duration_filesize \
       $OUTPUTS >/tmp/ffmpeg.log 2>&1 &
     STREAM_PID=$!
 }
 
-# مهلة قصيرة لمنح السيرفر الفرصة لتفريغ منفذ RTMP
 sleep 2
 
 while true; do
-    KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep -m1 "^http")
+    KICK_M3U8=$(streamlink --hls-live-edge 3 --hls-segment-threads 3 --stream-timeout 30 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep -m1 "^http")
 
     if [ -n "$KICK_M3U8" ]; then
         if [ "$CURRENT_MODE" != "LIVE" ] || ! kill -0 "$STREAM_PID" 2>/dev/null; then

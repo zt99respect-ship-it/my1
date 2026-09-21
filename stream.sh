@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==============================================================================
-# نظام البث المستمر 24/7 - النسخة المحسنة للاستقرار والتصفية الخفيفة (خوادم GitHub)
+# نظام البث المستمر 24/7 - البث المباشر بأعلى جودة (بدون انقطاع)
 # ==============================================================================
 
 KICK_CHANNEL="${KICK_CHANNEL:-}"
@@ -101,26 +101,27 @@ start_standby_stream() {
 start_live_stream() {
     local M3U8="$1"
     stop_stream
-    echo "🔴 بدء إعادة بث القناة المباشرة بأعلى سلاسة وتطبيق الفلاتر..."
+    echo "🔴 بدء إعادة بث القناة المباشرة بأعلى جودة وسلاسة (1080p60)..."
     OUTPUTS=$(get_outputs)
-
-    # فلاتر خفيفة وسريعة تناسب معالج GitHub Actions وتمنع الانقطاع مع رفع الألوان والحدة
+    
+    # تم إضافة فلتر تحسين الحدة والتفاصيل (unsharp) وتعديل التباين والتشبع (eq)
     ffmpeg -hide_banner -loglevel error -nostdin \
       -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
-      -fflags +genpts+discardcorrupt -i "$M3U8" \
-      -vf "fps=60,unsharp=3:3:0.8:3:3:0.0,eq=contrast=1.12:saturation=1.25" \
+      -fflags +genpts -i "$M3U8" \
+      -vf "unsharp=3:3:0.8:3:3:0.0,eq=contrast=1.12:saturation=1.2" \
       -c:v libx264 -preset superfast -tune zerolatency -pix_fmt yuv420p -r 60 -g 120 \
-      -b:v 5000k -maxrate 5500k -bufsize 10000k \
+      -b:v 6000k -maxrate 6000k -bufsize 12000k \
       -c:a aac -b:a 160k -ar 44100 \
       -flvflags no_duration_filesize \
       $OUTPUTS >/tmp/ffmpeg.log 2>&1 &
     STREAM_PID=$!
 }
 
+# مهلة قصيرة (2 ثانية) لمنح السيرفر الفرصة لتفريغ منفذ RTMP بعد إغلاق الجلسة القديمة
 sleep 2
 
 while true; do
-    KICK_M3U8=$(streamlink --hls-live-edge 3 --hls-segment-threads 3 --stream-timeout 30 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep -m1 "^http")
+    KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep -m1 "^http")
 
     if [ -n "$KICK_M3U8" ]; then
         if [ "$CURRENT_MODE" != "LIVE" ] || ! kill -0 "$STREAM_PID" 2>/dev/null; then

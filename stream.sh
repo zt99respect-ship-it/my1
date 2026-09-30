@@ -1,22 +1,61 @@
 #!/bin/bash
+set +m
 
 # ==============================================================================
-# نظام البث المستمر 24/7 - البث المباشر بأعلى جودة (بدون انقطاع)
+# ⚙️⚙️⚙️  إعدادات شاشة الانتظار — عدّل هنا فقط  ⚙️⚙️⚙️
 # ==============================================================================
 
-KICK_CHANNEL="${KICK_CHANNEL:-}"
+# النصوص
+STANDBY_TITLE="لم يبدأ البث المباشر بعد..."
+STANDBY_SUBTITLE="جاري انتظار قائمة ستريمرز MT"
+
+# نص ثالث اختياري
+STANDBY_EXTRA_ENABLED="no"          # "yes" أو "no"
+STANDBY_EXTRA="جار انتظار بث drb7h"
+
+# الألوان بصيغة ASS: &HAABBGGRR (BB=أزرق، GG=أخضر، RR=أحمر)
+COLOR_TITLE="&H00000000"        # أسود
+COLOR_SUBTITLE="&H00000000"     # أسود
+COLOR_EXTRA="&H00000000"        # أسود
+
+# الحد (Outline) والظل (Shadow) — أبيض
+COLOR_OUTLINE="&H00FFFFFF"      # أبيض
+COLOR_SHADOW="&H00FFFFFF"       # أبيض
+OUTLINE_SIZE=3
+SHADOW_SIZE=2
+
+# لون خلفية الشاشة (hex عادي RRGGBB) — برتقالي غامق
+BG_COLOR="0xCC5500"
+
+# أحجام الخطوط
+FONT_SIZE_TITLE=64
+FONT_SIZE_SUBTITLE=44
+FONT_SIZE_EXTRA=44
+
+# مواضع النصوص من أسفل الشاشة (بالبكسل)
+POS_TITLE=420
+POS_SUBTITLE=520
+POS_EXTRA=580
+
+# ==============================================================================
+# نهاية الإعدادات — لا تعدّل تحت هذا السطر
+# ==============================================================================
+
+
 RESTREAM_KEY="${RESTREAM_KEY:-}"
-YOUTUBE_KEY="${YOUTUBE_KEY:-}"
 QUALITY="${STREAM_QUALITY:-best}"
-DEST="${STREAM_DEST:-restream}"
 
-# تنظيف المفاتيح
-if [[ "$YOUTUBE_KEY" == "X" || "$YOUTUBE_KEY" == "x" ]]; then YOUTUBE_KEY=""; fi
-if [[ "$RESTREAM_KEY" == "X" || "$RESTREAM_KEY" == "x" ]]; then RESTREAM_KEY=""; fi
+[[ "$RESTREAM_KEY" == "X" || "$RESTREAM_KEY" == "x" ]] && RESTREAM_KEY=""
 
-STREAMER_NAME=$(echo "$KICK_CHANNEL" | tr '[:lower:]' '[:upper:]')
+if [ -z "$STREAMERS_LIST" ]; then echo "❌ قائمة الستريمرز فارغة"; exit 1; fi
+if [ -z "$RESTREAM_KEY" ]; then echo "❌ مفتاح ريستريم فارغ"; exit 1; fi
 
-# تحديد الخط المناسب للعربية
+echo "🔑 مفتاح ريستريم يبدأ بـ: ${RESTREAM_KEY:0:10}..."
+echo "🔧 ffmpeg: $(which ffmpeg) — $(ffmpeg -version 2>&1 | head -1 | awk '{print $3}')"
+echo "🔧 streamlink: $(which streamlink) — $(streamlink --version 2>&1)"
+
+IFS=',' read -r -a STREAMERS_RANK <<< "$STREAMERS_LIST"
+
 if fc-list : family | grep -qi "Noto Naskh Arabic"; then
     FONT_NAME="Noto Naskh Arabic"
 elif fc-list : family | grep -qi "Scheherazade"; then
@@ -24,43 +63,84 @@ elif fc-list : family | grep -qi "Scheherazade"; then
 else
     FONT_NAME="Sans"
 fi
+echo "🔤 الخط: $FONT_NAME"
 
-echo "========================================"
-echo "🚀 نظام المراقبة الذكية للقناة: $STREAMER_NAME"
-echo "🎯 وجهة البث المحددة: $DEST"
-echo "🎨 الخط المستخدم للنصوص: $FONT_NAME"
-echo "========================================"
+RESTREAM_URL="rtmp://live.restream.io/live/$RESTREAM_KEY"
+FIFO="/tmp/relay.ts"
+UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-STREAM_PID=""
+OUTPUT_PID=""
+PRODUCER_PID=""
 CURRENT_MODE="NONE"
+CURRENT_ACTIVE_STREAMER=""
+CURRENT_ACTIVE_INDEX=-1
 
 cleanup() {
-    echo "🧹 إيقاف عمليات البث..."
+    echo "🧹 إيقاف العمليات..."
     trap - EXIT INT TERM
-    [ -n "$STREAM_PID" ] && kill -9 "$STREAM_PID" 2>/dev/null
+    for P in "$PRODUCER_PID" "$OUTPUT_PID"; do
+        [ -n "$P" ] && kill -9 "$P" 2>/dev/null
+        [ -n "$P" ] && wait "$P" 2>/dev/null
+    done
     exit 0
 }
 trap cleanup EXIT INT TERM
 
-stop_stream() {
-    if [ -n "$STREAM_PID" ]; then
-        kill -9 "$STREAM_PID" 2>/dev/null
-        STREAM_PID=""
-    fi
+# ---------------------- FIFO ----------------------
+setup_fifo() {
+    rm -f "$FIFO"
+    mkfifo "$FIFO"
+    exec 3<>"$FIFO"
 }
 
-get_outputs() {
-    if [ "$DEST" == "youtube" ]; then
-        echo "-f flv rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
-    elif [ "$DEST" == "restream" ]; then
-        echo "-f flv rtmp://live.restream.io/live/$RESTREAM_KEY"
-    else
-        echo "-f flv rtmp://live.restream.io/live/$RESTREAM_KEY -f flv rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
+# ---------------------- المخرج الثابت ----------------------
+start_output() {
+    echo "🔗 فتح اتصال ثابت مع ريستريم..."
+    ffmpeg -y -hide_banner -loglevel warning -nostdin \
+      -thread_queue_size 1024 \
+      -fflags +genpts+igndts+discardcorrupt \
+      -max_delay 5000000 \
+      -f mpegts -i "$FIFO" \
+      -c copy \
+      -max_muxing_queue_size 4096 \
+      -flvflags no_duration_filesize \
+      -f flv "$RESTREAM_URL" >/tmp/ffmpeg_out.log 2>&1 &
+    OUTPUT_PID=$!
+    sleep 3
+    if ! kill -0 "$OUTPUT_PID" 2>/dev/null; then
+        echo "❌ فشل تشغيل المخرج."
+        cat /tmp/ffmpeg_out.log
+        exit 1
     fi
+    echo "✅ المخرج شغال (PID: $OUTPUT_PID)"
 }
 
-generate_initial_ass() {
-    cat <<EOF > /tmp/initial_standby.ass
+# ---------------------- إلغاء الرنات القديمة ----------------------
+cancel_old_runs() {
+    if [ -z "$GH_TOKEN" ] || [ -z "$GITHUB_RUN_ID" ]; then
+        echo "ℹ️ بدون GH_TOKEN — تخطي."
+        return 0
+    fi
+    echo "🛑 إلغاء الرنات القديمة..."
+    OLD_RUNS=$(timeout 15 gh run list --workflow="main.yml" --status=in_progress \
+      --json databaseId -q ".[].databaseId" 2>/dev/null | grep -v "$GITHUB_RUN_ID" || true)
+    for RUN_ID in $OLD_RUNS; do
+        echo "   إلغاء: $RUN_ID"
+        timeout 10 gh run cancel "$RUN_ID" 2>/dev/null || true
+    done
+    echo "✅ انتهى إلغاء الرنات."
+}
+
+# ---------------------- توليد ملف ASS من الإعدادات ----------------------
+generate_ass() {
+    EXTRA_STYLE_LINE=""
+    EXTRA_EVENT_LINE=""
+    if [ "$STANDBY_EXTRA_ENABLED" == "yes" ]; then
+        EXTRA_STYLE_LINE="Style: Extra,$FONT_NAME,$FONT_SIZE_EXTRA,$COLOR_EXTRA,&H00000000,$COLOR_OUTLINE,$COLOR_SHADOW,-1,0,0,0,100,100,0,0,1,$OUTLINE_SIZE,$SHADOW_SIZE,8,10,10,$POS_EXTRA,1"
+        EXTRA_EVENT_LINE="Dialogue: 0,0:00:00.00,9:59:59.99,Extra,,0,0,0,,{\\fad(600,600)}$STANDBY_EXTRA"
+    fi
+
+    cat > /tmp/standby.ass <<EOF
 [Script Info]
 ScriptType: v4.00+
 PlayResX: 1920
@@ -69,81 +149,145 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Title,$FONT_NAME,60,&H00FEB4D8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,420,1
-Style: Subtitle,$FONT_NAME,40,&H00F755A8,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,520,1
+Style: Title,$FONT_NAME,$FONT_SIZE_TITLE,$COLOR_TITLE,&H00000000,$COLOR_OUTLINE,$COLOR_SHADOW,-1,0,0,0,100,100,0,0,1,$OUTLINE_SIZE,$SHADOW_SIZE,8,10,10,$POS_TITLE,1
+Style: Subtitle,$FONT_NAME,$FONT_SIZE_SUBTITLE,$COLOR_SUBTITLE,&H00000000,$COLOR_OUTLINE,$COLOR_SHADOW,-1,0,0,0,100,100,0,0,1,$OUTLINE_SIZE,$SHADOW_SIZE,8,10,10,$POS_SUBTITLE,1
+$EXTRA_STYLE_LINE
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:00.00,9:59:59.99,Title,,0,0,0,,{\fad(600,600)}لم يبدأ البث المباشر بعد...
-Dialogue: 0,0:00:00.00,9:59:59.99,Subtitle,,0,0,0,,{\fad(600,600)}جاري انتظار الستريمر ${STREAMER_NAME}
+Dialogue: 0,0:00:00.00,9:59:59.99,Title,,0,0,0,,{\\fad(600,600)}$STANDBY_TITLE
+Dialogue: 0,0:00:00.00,9:59:59.99,Subtitle,,0,0,0,,{\\fad(600,600)}$STANDBY_SUBTITLE
+$EXTRA_EVENT_LINE
 EOF
 }
 
-start_standby_stream() {
-    generate_initial_ass
-    stop_stream
+stop_producer() {
+    if [ -n "$PRODUCER_PID" ]; then
+        kill -9 "$PRODUCER_PID" 2>/dev/null
+        wait "$PRODUCER_PID" 2>/dev/null
+        PRODUCER_PID=""
+    fi
+    sleep 1
+}
 
-    echo "⏳ بدء بث شاشة الانتظار إلى الوجهة المحددة (1080p60)..."
-    OUTPUTS=$(get_outputs)
-
-    ffmpeg -hide_banner -loglevel error -nostdin \
-      -re -f lavfi -i color=c=0x140024:s=1920x1080:r=60 \
+start_producer_standby() {
+    stop_producer
+    generate_ass
+    echo "⏳ منتج شاشة الانتظار..."
+    ffmpeg -y -hide_banner -loglevel warning -nostdin \
+      -re -f lavfi -i color=c=${BG_COLOR}:s=1920x1080:r=30 \
       -f lavfi -i anullsrc=r=44100:cl=stereo \
       -map 0:v:0 -map 1:a:0 \
-      -vf "ass=/tmp/initial_standby.ass" \
-      -c:v libx264 -preset superfast -tune zerolatency -pix_fmt yuv420p -r 60 -g 120 -b:v 3500k \
-      -c:a aac -b:a 128k -ar 44100 \
-      -flvflags no_duration_filesize \
-      $OUTPUTS >/tmp/ffmpeg.log 2>&1 &
-    STREAM_PID=$!
+      -vf "ass=/tmp/standby.ass" \
+      -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -r 30 -g 60 \
+      -c:a aac -b:a 128k -ar 44100 -ac 2 \
+      -max_muxing_queue_size 4096 \
+      -f mpegts "$FIFO" >/tmp/ffmpeg_in.log 2>&1 &
+    PRODUCER_PID=$!
 }
 
-start_live_stream() {
+start_producer_live() {
     local M3U8="$1"
-    stop_stream
-    echo "🔴 بدء إعادة بث القناة المباشرة بأعلى جودة وسلاسة (1080p60)..."
-    OUTPUTS=$(get_outputs)
-    
-    # تم إضافة فلتر تحسين الحدة والتفاصيل (unsharp) وتعديل التباين والتشبع (eq)
-    ffmpeg -hide_banner -loglevel error -nostdin \
+    local NAME="$2"
+    stop_producer
+    echo "🔴 منتج مباشر: [$NAME] — video copy + audio AAC..."
+    ffmpeg -y -hide_banner -loglevel warning -nostdin \
+      -headers "User-Agent: $UA" \
       -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
-      -fflags +genpts -i "$M3U8" \
-      -vf "unsharp=3:3:0.8:3:3:0.0,eq=contrast=1.12:saturation=1.2" \
-      -c:v libx264 -preset superfast -tune zerolatency -pix_fmt yuv420p -r 60 -g 120 \
-      -b:v 6000k -maxrate 6000k -bufsize 12000k \
-      -c:a aac -b:a 160k -ar 44100 \
-      -flvflags no_duration_filesize \
-      $OUTPUTS >/tmp/ffmpeg.log 2>&1 &
-    STREAM_PID=$!
+      -analyzeduration 2000000 -probesize 2000000 \
+      -fflags +genpts+igndts \
+      -i "$M3U8" \
+      -c:v copy \
+      -c:a aac -b:a 128k -ar 44100 -ac 2 \
+      -max_muxing_queue_size 4096 \
+      -muxdelay 0.1 -muxpreload 0.1 \
+      -f mpegts "$FIFO" >/tmp/ffmpeg_in.log 2>&1 &
+    PRODUCER_PID=$!
+
+    sleep 6
+    if ! kill -0 "$PRODUCER_PID" 2>/dev/null; then
+        echo "⚠️ فشل [$NAME]."
+        tail -n 5 /tmp/ffmpeg_in.log
+        return 1
+    fi
+    return 0
 }
 
-# مهلة قصيرة (2 ثانية) لمنح السيرفر الفرصة لتفريغ منفذ RTMP بعد إغلاق الجلسة القديمة
+# ============================================================
+#                    التشغيل الرئيسي
+# ============================================================
+setup_fifo
+start_output
+start_producer_standby
+CURRENT_MODE="STANDBY"
+
+( cancel_old_runs ) >/tmp/cancel_old.log 2>&1 &
+
 sleep 2
 
 while true; do
-    KICK_M3U8=$(streamlink --hls-live-edge 3 --stream-segment-threads 4 "https://kick.com/$KICK_CHANNEL" "$QUALITY" --stream-url 2>/dev/null | grep -m1 "^http")
+    if ! kill -0 "$OUTPUT_PID" 2>/dev/null; then
+        echo "❌ المخرج توقف — إنهاء."
+        exit 1
+    fi
 
-    if [ -n "$KICK_M3U8" ]; then
-        if [ "$CURRENT_MODE" != "LIVE" ] || ! kill -0 "$STREAM_PID" 2>/dev/null; then
-            if [ -n "$STREAM_PID" ] && ! kill -0 "$STREAM_PID" 2>/dev/null; then
-                echo "⚠️ توقف البث المباشر السابق! تفاصيل الخطأ:"
-                [ -f /tmp/ffmpeg.log ] && tail -n 15 /tmp/ffmpeg.log
+    FOUND_LIVE=false
+    SELECTED_STREAMER=""
+    SELECTED_M3U8=""
+    SELECTED_INDEX=-1
+
+    CHECK_LIMIT=${#STREAMERS_RANK[@]}
+    if [ "$CURRENT_MODE" == "LIVE" ] && [ "$CURRENT_ACTIVE_INDEX" -ge 0 ]; then
+        CHECK_LIMIT=$((CURRENT_ACTIVE_INDEX + 1))
+    fi
+
+    for ((i=0; i<CHECK_LIMIT; i++)); do
+        STREAMER=$(echo "${STREAMERS_RANK[$i]}" | xargs)
+        [ -z "$STREAMER" ] && continue
+        M3U8=$(streamlink --http-header "User-Agent=$UA" --hls-live-edge 3 \
+               --stream-timeout 15 "https://kick.com/$STREAMER" "$QUALITY" \
+               --stream-url 2>/dev/null | grep -m1 "^http")
+        if [ -n "$M3U8" ]; then
+            FOUND_LIVE=true
+            SELECTED_STREAMER="$STREAMER"
+            SELECTED_M3U8="$M3U8"
+            SELECTED_INDEX=$i
+            break
+        fi
+    done
+
+    if [ "$FOUND_LIVE" = true ]; then
+        NEED_SWITCH=false
+        if [ "$CURRENT_MODE" != "LIVE" ]; then NEED_SWITCH=true
+        elif [ "$CURRENT_ACTIVE_STREAMER" != "$SELECTED_STREAMER" ]; then NEED_SWITCH=true
+        elif [ -n "$PRODUCER_PID" ] && ! kill -0 "$PRODUCER_PID" 2>/dev/null; then NEED_SWITCH=true
+        fi
+
+        if [ "$NEED_SWITCH" = true ]; then
+            echo "🎯 التحويل إلى: $SELECTED_STREAMER"
+            if start_producer_live "$SELECTED_M3U8" "$SELECTED_STREAMER"; then
+                CURRENT_ACTIVE_STREAMER="$SELECTED_STREAMER"
+                CURRENT_ACTIVE_INDEX=$SELECTED_INDEX
+                CURRENT_MODE="LIVE"
+            else
+                if [ "$CURRENT_MODE" != "STANDBY" ]; then
+                    start_producer_standby
+                    CURRENT_MODE="STANDBY"
+                    CURRENT_ACTIVE_STREAMER=""
+                    CURRENT_ACTIVE_INDEX=-1
+                fi
             fi
-            echo "✅ الستريمر $STREAMER_NAME أونلاين! التبديل للبث المباشر..."
-            start_live_stream "$KICK_M3U8"
-            CURRENT_MODE="LIVE"
         fi
     else
-        if [ "$CURRENT_MODE" != "STANDBY" ] || ! kill -0 "$STREAM_PID" 2>/dev/null; then
-            if [ -n "$STREAM_PID" ] && ! kill -0 "$STREAM_PID" 2>/dev/null; then
-                echo "⚠️ توقف بث الانتظار السابق! تفاصيل الخطأ:"
-                [ -f /tmp/ffmpeg.log ] && tail -n 15 /tmp/ffmpeg.log
-            fi
-            echo "⏳ الستريمر $STREAMER_NAME غير متصل.. عرض شاشة الانتظار..."
-            start_standby_stream
+        if [ "$CURRENT_MODE" != "STANDBY" ] || [ -z "$PRODUCER_PID" ] || \
+           ! kill -0 "$PRODUCER_PID" 2>/dev/null; then
+            echo "⏳ لا يوجد بث — شاشة الانتظار..."
+            start_producer_standby
             CURRENT_MODE="STANDBY"
+            CURRENT_ACTIVE_STREAMER=""
+            CURRENT_ACTIVE_INDEX=-1
         fi
     fi
 
-    sleep 10
+    sleep 15
 done

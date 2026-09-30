@@ -1,33 +1,23 @@
-name: 24/7 Master Broadcast
+name: 24/7 Master Multi-Streamer Broadcast
 
 on:
   workflow_dispatch:
     inputs:
-      kick_channel:
-        description: 'اسم قناة كيك (Kick Channel)'
+      streamers_list:
+        description: 'قائمة الستريمرز'
         required: true
-        default: 'majah92'
-      youtube_key:
-        description: 'مفتاح بث يوتيوب'
-        required: false
-        default: ''
+        default: 'SXB,abuswe7l,firas,tmnaa,JASER'
       restream_key:
-        description: 'مفتاح بث ريستريم'
+        description: 'مفتاح ريستريم'
         required: false
         default: 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69'
-      destination:
-        description: 'وجهة البث (youtube, restream, both)'
-        required: true
-        default: 'restream'
       quality:
         description: 'جودة البث'
         required: true
         default: 'best'
   schedule:
-    # تشغيل تلقائي كل 5 ساعات
     - cron: '0 */5 * * *'
 
-# إعطاء صلاحية للأمر gh لإلغاء الرون القديم تلقائياً
 permissions:
   actions: write
   contents: read
@@ -35,37 +25,59 @@ permissions:
 jobs:
   broadcaster:
     runs-on: ubuntu-latest
-    timeout-minutes: 320 # إعطاء مهلة إضافية للبث القديم لكي لا يطفى قبل وصول الجديد
+    timeout-minutes: 355
 
     steps:
       - name: جلب ملفات المستودع
         uses: actions/checkout@v3
 
-      - name: تثبيت FFmpeg و Streamlink والخطوط والمكتبات
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg python3-pip fonts-noto-core fonts-sil-scheherazade fontconfig libass-dev
-          sudo pip3 install --upgrade streamlink
-          sudo fc-cache -f -v
+      - name: Cache للـ pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-streamlink-v1
 
-      - name: إغلاق الرون القديم (بعد التثبيت مباشرة وقبل بدء البث)
+      - name: تثبيت FFmpeg و Streamlink و الخطوط
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg fonts-noto-core fonts-sil-scheherazade fontconfig libass-dev
+          pip3 install --user --upgrade streamlink
+          sudo fc-cache -f -v >/dev/null 2>&1
+          ffmpeg -version | head -1
+          ~/.local/bin/streamlink --version
+
+      - name: إضافة ~/.local/bin إلى PATH
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: جدولة الرن التالي ذاتياً (بعد 5س40د)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          CURRENT_RUN_ID="${{ github.run_id }}"
-          OLD_RUNS=$(gh run list --workflow="main.yml" --status=in_progress --json databaseId -q ".[].databaseId" | grep -v "$CURRENT_RUN_ID" || true)
-          for RUN_ID in $OLD_RUNS; do
-            echo "🛑 إيقاف الرون القديم رقم: $RUN_ID"
-            gh run cancel "$RUN_ID" || true
-          done
+          STREAMERS="${{ github.event.inputs.streamers_list || 'SXB,abuswe7l,firas,tmnaa,JASER' }}"
+          RKEY="${{ github.event.inputs.restream_key || 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69' }}"
+          QUAL="${{ github.event.inputs.quality || 'best' }}"
+          setsid nohup bash -c "
+            sleep 20400
+            gh workflow run main.yml --ref '${{ github.ref_name }}' \
+              -f streamers_list='$STREAMERS' \
+              -f restream_key='$RKEY' \
+              -f quality='$QUAL'
+          " >/tmp/self_trigger.log 2>&1 < /dev/null &
+          echo "✅ الرن التالي مجدول بعد 5س40د"
 
-      - name: تشغيل سكربت البث الشامل
+      - name: تشغيل سكربت البث
         env:
-          KICK_CHANNEL: ${{ github.event.inputs.kick_channel || 'majah92' }}
-          YOUTUBE_KEY: ${{ github.event.inputs.youtube_key || '' }}
+          STREAMERS_LIST: ${{ github.event.inputs.streamers_list || 'SXB,abuswe7l,firas,tmnaa,JASER' }}
           RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69' }}
-          STREAM_DEST: ${{ github.event.inputs.destination || 'restream' }}
           STREAM_QUALITY: ${{ github.event.inputs.quality || 'best' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           chmod +x stream.sh
           ./stream.sh
+
+      - name: تشخيص نهائي عند الإنهاء
+        if: always()
+        run: |
+          echo "===== OUT ====="; tail -n 30 /tmp/ffmpeg_out.log 2>/dev/null || echo "فارغ"
+          echo "===== IN ====="; tail -n 30 /tmp/ffmpeg_in.log 2>/dev/null || echo "فارغ"

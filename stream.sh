@@ -1,160 +1,55 @@
 #!/bin/bash
 set +m
 
-# ==============================================================================
-# ⚙️⚙️⚙️  إعدادات شاشة الانتظار — ميستري تاون  ⚙️⚙️⚙️
-# ==============================================================================
-
-STANDBY_TITLE="لم يبدأ ستريمرز ميستري تاون البث بعد"
-STANDBY_SUBTITLE="جاري ستريمرز انتضار ميستري تاون بدأ البث."
-
-STANDBY_EXTRA_ENABLED="no"
-STANDBY_EXTRA=""
-
-COLOR_TITLE="&H00000000"
-COLOR_SUBTITLE="&H00000000"
-COLOR_EXTRA="&H00000000"
-
-COLOR_OUTLINE="&H00FFFFFF"
-COLOR_SHADOW="&H00FFFFFF"
-OUTLINE_SIZE=3
-SHADOW_SIZE=2
-
-BG_COLOR="0xCC5500"
-
-FONT_SIZE_TITLE=78
-FONT_SIZE_SUBTITLE=54
-FONT_SIZE_EXTRA=54
-
-POS_TITLE=420
-POS_SUBTITLE=520
-POS_EXTRA=580
-
+# ═════════ إعدادات ميستري تاون ═════════
+TITLE="لم يبدأ ستريمرز ميستري تاون البث بعد
+SXB - TMNAA - ABUSWE7L - FIRAS - JASER"
+SUBTITLE="جاري انتضار ستريمرز ميستري تاون بدأ البث."
+COLOR_T="&H00000000"
+COLOR_S="&H00000000"
+BG="0xCC5500"
+FS_T=78
+FS_S=54
+POS_T=420
+POS_S=520
 LOGO_URL="https://k.top4top.io/p_39265ztwc0.png"
-LOGO_FILE="/tmp/logo.png"
-LOGO_WIDTH=380
-LOGO_BOTTOM_MARGIN=80
-
-LOGO_SHOW_DURATION=5
+LOGO_W=380
+LOGO_BOTTOM=80
+LOGO_SHOW=5
 LOGO_CYCLE=7
-
-# ==============================================================================
+# ═══════════════════════════════════════
 
 RESTREAM_KEY="${RESTREAM_KEY:-}"
-QUALITY="${STREAM_QUALITY:-best}"
-[[ "$RESTREAM_KEY" == "X" || "$RESTREAM_KEY" == "x" ]] && RESTREAM_KEY=""
+[ -z "$RESTREAM_KEY" ] && { echo "ERR: no key"; exit 1; }
+[ -z "$STREAMERS_LIST" ] && { echo "ERR: no streamers"; exit 1; }
 
-if [ -z "$STREAMERS_LIST" ]; then echo "❌ قائمة الستريمرز فارغة"; exit 1; fi
-if [ -z "$RESTREAM_KEY" ]; then echo "❌ مفتاح ريستريم فارغ"; exit 1; fi
-
-echo "🔑 مفتاح ريستريم يبدأ بـ: ${RESTREAM_KEY:0:10}..."
-echo "🔧 ffmpeg: $(which ffmpeg) — $(ffmpeg -version 2>&1 | head -1 | awk '{print $3}')"
-echo "🔧 streamlink: $(which streamlink) — $(streamlink --version 2>&1)"
-
-echo "⬇️ تحميل شعار..."
-curl -sL --max-time 20 -A "Mozilla/5.0" "$LOGO_URL" -o "$LOGO_FILE" || true
-if [ ! -s "$LOGO_FILE" ]; then
-    echo "⚠️ فشل تحميل الشعار — سيعمل البث بدونه."
-    LOGO_FILE=""
-else
-    if file "$LOGO_FILE" | grep -qiE "PNG|JPEG|JPG|image"; then
-        echo "✅ الشعار صالح: $(file -b "$LOGO_FILE")"
-    else
-        echo "⚠️ الملف ليس صورة (ربما HTML) — تجاهل الشعار."
-        head -c 200 "$LOGO_FILE"; echo ""
-        LOGO_FILE=""
-    fi
-fi
-
-IFS=',' read -r -a STREAMERS_RANK <<< "$STREAMERS_LIST"
-
-if fc-list : family | grep -qi "Noto Naskh Arabic"; then
-    FONT_NAME="Noto Naskh Arabic"
-elif fc-list : family | grep -qi "Scheherazade"; then
-    FONT_NAME="Scheherazade New"
-else
-    FONT_NAME="Sans"
-fi
-echo "🔤 الخط: $FONT_NAME"
-
+UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 RESTREAM_URL="rtmp://live.restream.io/live/$RESTREAM_KEY"
 FIFO="/tmp/relay.ts"
-UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-OUTPUT_PID=""
-PRODUCER_PID=""
-CURRENT_MODE="NONE"
-CURRENT_ACTIVE_STREAMER=""
-CURRENT_ACTIVE_INDEX=-1
+IFS=',' read -r -a STREAMERS <<< "$STREAMERS_LIST"
 
-cleanup() {
-    echo "🧹 إيقاف العمليات..."
-    trap - EXIT INT TERM
-    for P in "$PRODUCER_PID" "$OUTPUT_PID"; do
-        [ -n "$P" ] && kill -9 "$P" 2>/dev/null
-        [ -n "$P" ] && wait "$P" 2>/dev/null
-    done
-    exit 0
-}
-trap cleanup EXIT INT TERM
+if fc-list : family | grep -qi "Noto Naskh Arabic"; then
+    FONT="Noto Naskh Arabic"
+else
+    FONT="Sans"
+fi
 
-setup_fifo() {
-    rm -f "$FIFO"
-    mkfifo "$FIFO"
-    exec 3<>"$FIFO"
-}
-
-start_output() {
-    local attempt=1
-    while [ $attempt -le 3 ]; do
-        echo "🔗 فتح اتصال ثابت مع ريستريم (محاولة $attempt/3)..."
-        ffmpeg -y -hide_banner -loglevel warning -nostdin \
-          -thread_queue_size 512 \
-          -probesize 32 -analyzeduration 0 \
-          -f mpegts -i "$FIFO" \
-          -c copy \
-          -max_muxing_queue_size 4096 \
-          -flvflags no_duration_filesize \
-          -f flv "$RESTREAM_URL" >/tmp/ffmpeg_out.log 2>&1 &
-        OUTPUT_PID=$!
-        sleep 4
-        if kill -0 "$OUTPUT_PID" 2>/dev/null; then
-            echo "✅ المخرج شغال (PID: $OUTPUT_PID)"
-            return 0
-        fi
-        echo "⚠️ محاولة $attempt فشلت:"
-        tail -n 5 /tmp/ffmpeg_out.log
-        attempt=$((attempt + 1))
-        sleep 2
-    done
-    echo "❌ فشل تشغيل المخرج بعد 3 محاولات."
-    exit 1
-}
-
-cancel_old_runs() {
-    if [ -z "$GH_TOKEN" ] || [ -z "$GITHUB_RUN_ID" ]; then
-        echo "ℹ️ بدون GH_TOKEN — تخطي."
-        return 0
+# تحميل الشعار
+LOGO=""
+if curl -sL --max-time 25 -A "Mozilla/5.0" "$LOGO_URL" -o /tmp/logo.png 2>/dev/null; then
+    if [ -s /tmp/logo.png ] && file /tmp/logo.png 2>/dev/null | grep -qiE "PNG|JPEG|image"; then
+        LOGO="/tmp/logo.png"
+        echo "✅ logo OK: $(file -b /tmp/logo.png)"
+    else
+        echo "⚠️ logo not image — continuing without"
     fi
-    echo "🛑 إلغاء الرنات القديمة..."
-    OLD_RUNS=$(timeout 15 gh run list --workflow="main.yml" --status=in_progress \
-      --json databaseId -q ".[].databaseId" 2>/dev/null | grep -v "$GITHUB_RUN_ID" || true)
-    for RUN_ID in $OLD_RUNS; do
-        echo "   إلغاء: $RUN_ID"
-        timeout 10 gh run cancel "$RUN_ID" 2>/dev/null || true
-    done
-    echo "✅ انتهى إلغاء الرنات."
-}
+else
+    echo "⚠️ logo download failed"
+fi
 
-generate_ass() {
-    EXTRA_STYLE_LINE=""
-    EXTRA_EVENT_LINE=""
-    if [ "$STANDBY_EXTRA_ENABLED" == "yes" ]; then
-        EXTRA_STYLE_LINE="Style: Extra,$FONT_NAME,$FONT_SIZE_EXTRA,$COLOR_EXTRA,&H00000000,$COLOR_OUTLINE,$COLOR_SHADOW,-1,0,0,0,100,100,0,0,1,$OUTLINE_SIZE,$SHADOW_SIZE,8,10,10,$POS_EXTRA,1"
-        EXTRA_EVENT_LINE="Dialogue: 0,0:00:00.00,9:59:59.99,Extra,,0,0,0,,{\\fad(600,600)}$STANDBY_EXTRA"
-    fi
-
-    cat > /tmp/standby.ass <<EOF
+# بناء ASS
+cat > /tmp/s.ass <<EOF
 [Script Info]
 ScriptType: v4.00+
 PlayResX: 1920
@@ -163,176 +58,222 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Title,$FONT_NAME,$FONT_SIZE_TITLE,$COLOR_TITLE,&H00000000,$COLOR_OUTLINE,$COLOR_SHADOW,-1,0,0,0,100,100,0,0,1,$OUTLINE_SIZE,$SHADOW_SIZE,8,10,10,$POS_TITLE,1
-Style: Subtitle,$FONT_NAME,$FONT_SIZE_SUBTITLE,$COLOR_SUBTITLE,&H00000000,$COLOR_OUTLINE,$COLOR_SHADOW,-1,0,0,0,100,100,0,0,1,$OUTLINE_SIZE,$SHADOW_SIZE,8,10,10,$POS_SUBTITLE,1
-$EXTRA_STYLE_LINE
+Style: T,$FONT,$FS_T,$COLOR_T,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,$POS_T,1
+Style: S,$FONT,$FS_S,$COLOR_S,&H00000000,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,2,1,8,10,10,$POS_S,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:00.00,9:59:59.99,Title,,0,0,0,,{\\fad(600,600)}$STANDBY_TITLE
-Dialogue: 0,0:00:00.00,9:59:59.99,Subtitle,,0,0,0,,{\\fad(600,600)}$STANDBY_SUBTITLE
-$EXTRA_EVENT_LINE
+Dialogue: 0,0:00:00.00,9:59:59.99,T,,0,0,0,,{\\fad(600,600)}$TITLE
+Dialogue: 0,0:00:00.00,9:59:59.99,S,,0,0,0,,{\\fad(600,600)}$SUBTITLE
 EOF
-}
 
-stop_producer() {
-    if [ -n "$PRODUCER_PID" ]; then
-        kill -9 "$PRODUCER_PID" 2>/dev/null
-        wait "$PRODUCER_PID" 2>/dev/null
-        PRODUCER_PID=""
-    fi
-    sleep 1
-}
+# ═════════ FIFO (مرة واحدة) ═════════
+rm -f "$FIFO"
+mkfifo "$FIFO"
+exec 3<>"$FIFO"
 
-start_producer_standby() {
-    stop_producer
-    generate_ass
-    echo "⏳ منتج شاشة الانتظار..."
-
-    if [ -n "$LOGO_FILE" ]; then
+# ═════════ دالة التشغيل ═════════
+run() {
+    # ── منتج الانتظار (lavfi + شعار اختياري) ──
+    if [ -n "$LOGO" ]; then
         ffmpeg -y -hide_banner -loglevel warning -nostdin \
-          -re -f lavfi -i color=c=${BG_COLOR}:s=1920x1080:r=30 \
-          -loop 1 -i "$LOGO_FILE" \
-          -f lavfi -i anullsrc=r=44100:cl=stereo \
-          -filter_complex "[0:v]ass=/tmp/standby.ass[base];[1:v]scale=${LOGO_WIDTH}:-2[logo];[base][logo]overlay=x=(W-w)/2:y=H-h-${LOGO_BOTTOM_MARGIN}:enable='lt(mod(t\,${LOGO_CYCLE})\,${LOGO_SHOW_DURATION})'[vout]" \
-          -map "[vout]" -map 2:a:0 \
-          -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -r 30 -g 60 \
-          -c:a aac -b:a 128k -ar 44100 -ac 2 \
-          -max_muxing_queue_size 4096 \
-          -f mpegts "$FIFO" >/tmp/ffmpeg_in.log 2>&1 &
-        PRODUCER_PID=$!
+            -re -f lavfi -i "color=c=$BG:s=1920x1080:r=30" \
+            -loop 1 -framerate 30 -i "$LOGO" \
+            -f lavfi -i "anullsrc=r=44100:cl=stereo" \
+            -filter_complex "[0:v]ass=/tmp/s.ass[b];[1:v]scale=$LOGO_W:-2[l];[b][l]overlay=x=(W-w)/2:y=H-h-$LOGO_BOTTOM:enable='lt(mod(t\,$LOGO_CYCLE)\,$LOGO_SHOW)'[v]" \
+            -map "[v]" -map 2:a:0 \
+            -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 \
+            -c:a aac -b:a 128k -ar 44100 -ac 2 \
+            -max_muxing_queue_size 4096 \
+            -f mpegts "$FIFO" >/tmp/prod.log 2>&1 &
     else
         ffmpeg -y -hide_banner -loglevel warning -nostdin \
-          -re -f lavfi -i color=c=${BG_COLOR}:s=1920x1080:r=30 \
-          -f lavfi -i anullsrc=r=44100:cl=stereo \
-          -map 0:v:0 -map 1:a:0 \
-          -vf "ass=/tmp/standby.ass" \
-          -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -r 30 -g 60 \
-          -c:a aac -b:a 128k -ar 44100 -ac 2 \
-          -max_muxing_queue_size 4096 \
-          -f mpegts "$FIFO" >/tmp/ffmpeg_in.log 2>&1 &
-        PRODUCER_PID=$!
+            -re -f lavfi -i "color=c=$BG:s=1920x1080:r=30" \
+            -f lavfi -i "anullsrc=r=44100:cl=stereo" \
+            -vf "ass=/tmp/s.ass" \
+            -map 0:v:0 -map 1:a:0 \
+            -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 \
+            -c:a aac -b:a 128k -ar 44100 -ac 2 \
+            -max_muxing_queue_size 4096 \
+            -f mpegts "$FIFO" >/tmp/prod.log 2>&1 &
     fi
-
-    sleep 3
-    if ! kill -0 "$PRODUCER_PID" 2>/dev/null; then
-        echo "❌ منتج الانتظار مات فوراً! التفاصيل:"
-        cat /tmp/ffmpeg_in.log
-        PRODUCER_PID=""
+    PROD=$!
+    sleep 5
+    if ! kill -0 $PROD 2>/dev/null; then
+        echo "❌ منتج الانتظار فشل:"
+        cat /tmp/prod.log
         return 1
     fi
-    return 0
-}
 
-start_producer_live() {
-    local M3U8="$1"
-    local NAME="$2"
-    stop_producer
-    echo "🔴 منتج مباشر: [$NAME] — video copy + audio AAC..."
+    # ── المخرج ──
     ffmpeg -y -hide_banner -loglevel warning -nostdin \
-      -headers "User-Agent: $UA" \
-      -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
-      -analyzeduration 2000000 -probesize 2000000 \
-      -fflags +genpts+igndts \
-      -i "$M3U8" \
-      -c:v copy \
-      -c:a aac -b:a 128k -ar 44100 -ac 2 \
-      -max_muxing_queue_size 4096 \
-      -muxdelay 0.1 -muxpreload 0.1 \
-      -f mpegts "$FIFO" >/tmp/ffmpeg_in.log 2>&1 &
-    PRODUCER_PID=$!
-
-    sleep 6
-    if ! kill -0 "$PRODUCER_PID" 2>/dev/null; then
-        echo "⚠️ فشل [$NAME]."
-        tail -n 5 /tmp/ffmpeg_in.log
+        -thread_queue_size 512 \
+        -fflags +genpts+igndts+discardcorrupt \
+        -analyzeduration 5000000 -probesize 2000000 \
+        -f mpegts -i "$FIFO" \
+        -c copy -max_muxing_queue_size 4096 \
+        -flvflags no_duration_filesize \
+        -f flv "$RESTREAM_URL" >/tmp/out.log 2>&1 &
+    OUT=$!
+    sleep 5
+    if ! kill -0 $OUT 2>/dev/null; then
+        echo "❌ المخرج فشل:"
+        cat /tmp/out.log
+        kill -9 $PROD 2>/dev/null
         return 1
     fi
-    return 0
-}
 
-setup_fifo
-start_output
-start_producer_standby
-CURRENT_MODE="STANDBY"
+    echo "✅ البث يعمل — PROD=$PROD OUT=$OUT"
 
-( cancel_old_runs ) >/tmp/cancel_old.log 2>&1 &
+    # ── إلغاء الرنات الأقدم ──
+    ( if [ -n "$GH_TOKEN" ] && [ -n "$GITHUB_RUN_ID" ]; then
+        OLD=$(timeout 10 gh run list --workflow="main.yml" --status=in_progress \
+              --json databaseId -q ".[].databaseId" 2>/dev/null | \
+              awk -v m="$GITHUB_RUN_ID" '$1 < m')
+        for R in $OLD; do timeout 8 gh run cancel "$R" 2>/dev/null; done
+      fi ) >/tmp/cancel.log 2>&1 &
 
-sleep 2
+    MODE="STANDBY"
+    ACTIVE=""
+    ACTIVE_IDX=-1
+    TICK=0
 
-DIAG_TICK=0
-
-while true; do
-    if ! kill -0 "$OUTPUT_PID" 2>/dev/null; then
-        echo "⚠️ المخرج توقف — إعادة تشغيل..."
-        start_output || exit 1
-    fi
-
-    FOUND_LIVE=false
-    SELECTED_STREAMER=""
-    SELECTED_M3U8=""
-    SELECTED_INDEX=-1
-
-    CHECK_LIMIT=${#STREAMERS_RANK[@]}
-    if [ "$CURRENT_MODE" == "LIVE" ] && [ "$CURRENT_ACTIVE_INDEX" -ge 0 ]; then
-        CHECK_LIMIT=$((CURRENT_ACTIVE_INDEX + 1))
-    fi
-
-    for ((i=0; i<CHECK_LIMIT; i++)); do
-        STREAMER=$(echo "${STREAMERS_RANK[$i]}" | xargs)
-        [ -z "$STREAMER" ] && continue
-        M3U8=$(streamlink --http-header "User-Agent=$UA" --hls-live-edge 3 \
-               --stream-timeout 15 "https://kick.com/$STREAMER" "$QUALITY" \
-               --stream-url 2>/dev/null | grep -m1 "^http")
-        if [ -n "$M3U8" ]; then
-            FOUND_LIVE=true
-            SELECTED_STREAMER="$STREAMER"
-            SELECTED_M3U8="$M3U8"
-            SELECTED_INDEX=$i
-            break
-        fi
-    done
-
-    if [ "$FOUND_LIVE" = true ]; then
-        NEED_SWITCH=false
-        if [ "$CURRENT_MODE" != "LIVE" ]; then NEED_SWITCH=true
-        elif [ "$CURRENT_ACTIVE_STREAMER" != "$SELECTED_STREAMER" ]; then NEED_SWITCH=true
-        elif [ -n "$PRODUCER_PID" ] && ! kill -0 "$PRODUCER_PID" 2>/dev/null; then NEED_SWITCH=true
+    # ── الحلقة الرئيسية ──
+    while true; do
+        if ! kill -0 $OUT 2>/dev/null; then
+            echo "⚠️ المخرج مات — إعادة"
+            kill -9 $PROD 2>/dev/null
+            return 1
         fi
 
-        if [ "$NEED_SWITCH" = true ]; then
-            echo "🎯 التحويل إلى: $SELECTED_STREAMER"
-            if start_producer_live "$SELECTED_M3U8" "$SELECTED_STREAMER"; then
-                CURRENT_ACTIVE_STREAMER="$SELECTED_STREAMER"
-                CURRENT_ACTIVE_INDEX=$SELECTED_INDEX
-                CURRENT_MODE="LIVE"
+        if ! kill -0 $PROD 2>/dev/null; then
+            if [ "$MODE" = "LIVE" ]; then
+                MODE="NONE"; ACTIVE=""; ACTIVE_IDX=-1
             else
-                if [ "$CURRENT_MODE" != "STANDBY" ]; then
-                    start_producer_standby
-                    CURRENT_MODE="STANDBY"
-                    CURRENT_ACTIVE_STREAMER=""
-                    CURRENT_ACTIVE_INDEX=-1
+                if [ -n "$LOGO" ]; then
+                    ffmpeg -y -hide_banner -loglevel warning -nostdin \
+                        -re -f lavfi -i "color=c=$BG:s=1920x1080:r=30" \
+                        -loop 1 -framerate 30 -i "$LOGO" \
+                        -f lavfi -i "anullsrc=r=44100:cl=stereo" \
+                        -filter_complex "[0:v]ass=/tmp/s.ass[b];[1:v]scale=$LOGO_W:-2[l];[b][l]overlay=x=(W-w)/2:y=H-h-$LOGO_BOTTOM:enable='lt(mod(t\,$LOGO_CYCLE)\,$LOGO_SHOW)'[v]" \
+                        -map "[v]" -map 2:a:0 \
+                        -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 \
+                        -c:a aac -b:a 128k -ar 44100 -ac 2 \
+                        -max_muxing_queue_size 4096 \
+                        -f mpegts "$FIFO" >/tmp/prod.log 2>&1 &
+                else
+                    ffmpeg -y -hide_banner -loglevel warning -nostdin \
+                        -re -f lavfi -i "color=c=$BG:s=1920x1080:r=30" \
+                        -f lavfi -i "anullsrc=r=44100:cl=stereo" \
+                        -vf "ass=/tmp/s.ass" \
+                        -map 0:v:0 -map 1:a:0 \
+                        -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 \
+                        -c:a aac -b:a 128k -ar 44100 -ac 2 \
+                        -max_muxing_queue_size 4096 \
+                        -f mpegts "$FIFO" >/tmp/prod.log 2>&1 &
                 fi
+                PROD=$!
+                sleep 3
             fi
         fi
-    else
-        if [ "$CURRENT_MODE" != "STANDBY" ] || [ -z "$PRODUCER_PID" ] || \
-           ! kill -0 "$PRODUCER_PID" 2>/dev/null; then
-            echo "⏳ لا يوجد بث — شاشة الانتظار..."
-            start_producer_standby
-            CURRENT_MODE="STANDBY"
-            CURRENT_ACTIVE_STREAMER=""
-            CURRENT_ACTIVE_INDEX=-1
+
+        # ── البحث ──
+        FOUND=""; FOUND_URL=""; FOUND_IDX=-1
+        LIMIT=${#STREAMERS[@]}
+        if [ "$MODE" = "LIVE" ] && [ "$ACTIVE_IDX" -ge 0 ]; then
+            LIMIT=$((ACTIVE_IDX + 1))
         fi
-    fi
 
-    DIAG_TICK=$((DIAG_TICK + 1))
-    if [ $((DIAG_TICK % 4)) -eq 0 ]; then
-        echo "── DIAG $(date -u +%H:%M:%S)Z ──"
-        echo "OUT: $(kill -0 $OUTPUT_PID 2>/dev/null && echo حي || echo ميت) | PROD: $(kill -0 $PRODUCER_PID 2>/dev/null && echo حي || echo ميت)"
-        echo "OUT log: $(tail -n 1 /tmp/ffmpeg_out.log 2>/dev/null || echo فارغ)"
-        echo "IN  log: $(tail -n 1 /tmp/ffmpeg_in.log 2>/dev/null || echo فارغ)"
-    fi
+        for ((i=0; i<LIMIT; i++)); do
+            S=$(echo "${STREAMERS[$i]}" | xargs)
+            [ -z "$S" ] && continue
+            URL=$(timeout 20 streamlink --http-header "User-Agent=$UA" \
+                  --stream-timeout 15 "https://kick.com/$S" best \
+                  --stream-url 2>/dev/null | grep -m1 "^http")
+            if [ -n "$URL" ]; then
+                FOUND="$S"; FOUND_URL="$URL"; FOUND_IDX=$i
+                break
+            fi
+        done
 
-    sleep 15
+        if [ -n "$FOUND" ]; then
+            if [ "$MODE" != "LIVE" ] || [ "$ACTIVE" != "$FOUND" ]; then
+                echo "🎯 -> $FOUND"
+                kill -9 $PROD 2>/dev/null
+                wait $PROD 2>/dev/null
+                sleep 1
+
+                ffmpeg -y -hide_banner -loglevel warning -nostdin \
+                    -headers "User-Agent: $UA" \
+                    -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 \
+                    -reconnect_delay_max 5 \
+                    -analyzeduration 2000000 -probesize 2000000 \
+                    -fflags +genpts+igndts \
+                    -i "$FOUND_URL" \
+                    -c:v copy -c:a aac -b:a 128k -ar 44100 -ac 2 \
+                    -max_muxing_queue_size 4096 \
+                    -muxdelay 0.1 -muxpreload 0.1 \
+                    -f mpegts "$FIFO" >/tmp/prod.log 2>&1 &
+                PROD=$!
+                sleep 6
+
+                if kill -0 $PROD 2>/dev/null; then
+                    MODE="LIVE"; ACTIVE="$FOUND"; ACTIVE_IDX=$FOUND_IDX
+                    echo "✅ مباشر: $FOUND"
+                else
+                    echo "⚠️ فشل $FOUND:"
+                    tail -n 5 /tmp/prod.log
+                    MODE="NONE"
+                fi
+            fi
+        else
+            if [ "$MODE" != "STANDBY" ]; then
+                echo "⏳ لا يوجد بث — standby"
+                kill -9 $PROD 2>/dev/null
+                wait $PROD 2>/dev/null
+                sleep 1
+
+                if [ -n "$LOGO" ]; then
+                    ffmpeg -y -hide_banner -loglevel warning -nostdin \
+                        -re -f lavfi -i "color=c=$BG:s=1920x1080:r=30" \
+                        -loop 1 -framerate 30 -i "$LOGO" \
+                        -f lavfi -i "anullsrc=r=44100:cl=stereo" \
+                        -filter_complex "[0:v]ass=/tmp/s.ass[b];[1:v]scale=$LOGO_W:-2[l];[b][l]overlay=x=(W-w)/2:y=H-h-$LOGO_BOTTOM:enable='lt(mod(t\,$LOGO_CYCLE)\,$LOGO_SHOW)'[v]" \
+                        -map "[v]" -map 2:a:0 \
+                        -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 \
+                        -c:a aac -b:a 128k -ar 44100 -ac 2 \
+                        -max_muxing_queue_size 4096 \
+                        -f mpegts "$FIFO" >/tmp/prod.log 2>&1 &
+                else
+                    ffmpeg -y -hide_banner -loglevel warning -nostdin \
+                        -re -f lavfi -i "color=c=$BG:s=1920x1080:r=30" \
+                        -f lavfi -i "anullsrc=r=44100:cl=stereo" \
+                        -vf "ass=/tmp/s.ass" \
+                        -map 0:v:0 -map 1:a:0 \
+                        -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 \
+                        -c:a aac -b:a 128k -ar 44100 -ac 2 \
+                        -max_muxing_queue_size 4096 \
+                        -f mpegts "$FIFO" >/tmp/prod.log 2>&1 &
+                fi
+                PROD=$!
+                sleep 3
+                MODE="STANDBY"; ACTIVE=""; ACTIVE_IDX=-1
+            fi
+        fi
+
+        TICK=$((TICK+1))
+        if [ $((TICK % 4)) -eq 0 ]; then
+            echo "[$(date -u +%H:%M:%S)] mode=$MODE OUT=$(kill -0 $OUT 2>/dev/null && echo UP || echo DOWN) PROD=$(kill -0 $PROD 2>/dev/null && echo UP || echo DOWN)"
+        fi
+
+        sleep 15
+    done
+}
+
+# ═════════ الحلقة الخارجية ═════════
+echo "▶️ starting"
+while true; do
+    run
+    echo "⚠️ انتهت الجلسة — إعادة بعد 5s"
+    sleep 5
 done

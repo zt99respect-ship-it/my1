@@ -54,7 +54,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           STREAMERS="${{ github.event.inputs.streamers_list || 'SXB,abuswe7l,firas,tmnaa,JASER' }}"
-          RKEY="${{ github.event.inputs.restream_key || 're_12416925_event6f6e2607a46347b59efab0c722ed3e53' }}"
+          RKEY="${{ github.event.inputs.restream_key || 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69' }}"
           QUAL="${{ github.event.inputs.quality || 'best' }}"
           setsid nohup bash -c "
             sleep 20400
@@ -68,7 +68,7 @@ jobs:
       - name: تشغيل سكربت البث (مع إعادة محاولة)
         env:
           STREAMERS_LIST: ${{ github.event.inputs.streamers_list || 'SXB,abuswe7l,firas,tmnaa,JASER' }}
-          RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12416925_event6f6e2607a46347b59efab0c722ed3e53' }}
+          RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69' }}
           STREAM_QUALITY: ${{ github.event.inputs.quality || 'best' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_RUN_ID: ${{ github.run_id }}
@@ -84,5 +84,5 @@ jobs:
       - name: تشخيص نهائي عند الإنهاء
         if: always()
         run: |
-          echo "===== OUT ====="; tail -n 30 /tmp/ffmpeg_out.log 2>/dev/null || echo "فارغ"
-          echo "===== IN ====="; tail -n 30 /tmp/ffmpeg_in.log 2>/dev/null || echo "فارغ"
+          echo "===== OUT ====="; tail -n 50 /tmp/ffmpeg_out.log 2>/dev/null || echo "فارغ"
+          echo "===== IN ====="; tail -n 50 /tmp/ffmpeg_in.log 2>/dev/null || echo "فارغ"

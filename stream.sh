@@ -2,11 +2,11 @@
 set +m
 
 # ==============================================================================
-# ⚙️⚙️⚙️  إعدادات شاشة الانتظار — Mystery Town (برتقالي + نص أسود)  ⚙️⚙️⚙️
+# ⚙️⚙️⚙️  إعدادات شاشة الانتظار — ميستري تاون  ⚙️⚙️⚙️
 # ==============================================================================
 
-STANDBY_TITLE="لم يبدأ البث المباشر بعد..."
-STANDBY_SUBTITLE="جاري انتظار قائمة الستريمرز المحددة"
+STANDBY_TITLE="لم يبدأ ميستري تاون البث بعد"
+STANDBY_SUBTITLE="جاري انتضار ميستري تاون بدأ البث."
 
 STANDBY_EXTRA_ENABLED="no"
 STANDBY_EXTRA=""
@@ -25,16 +25,24 @@ SHADOW_SIZE=2
 # خلفية الشاشة — برتقالي غامق
 BG_COLOR="0xCC5500"
 
-FONT_SIZE_TITLE=64
-FONT_SIZE_SUBTITLE=44
-FONT_SIZE_EXTRA=44
+# أحجام النصوص (تم تكبيرها)
+FONT_SIZE_TITLE=78
+FONT_SIZE_SUBTITLE=54
+FONT_SIZE_EXTRA=54
 
 POS_TITLE=420
 POS_SUBTITLE=520
 POS_EXTRA=580
 
-# ==============================================================================
+# رابط صورة الشعار
+LOGO_URL="https://k.top4top.io/p_39265ztwc0.png"
+LOGO_FILE="/tmp/logo.png"
 
+# مدة ظهور الشعار (ثواني) ومدة الدورة الكاملة (ثواني)
+LOGO_SHOW_DURATION=5
+LOGO_CYCLE=7
+
+# ==============================================================================
 
 RESTREAM_KEY="${RESTREAM_KEY:-}"
 QUALITY="${STREAM_QUALITY:-best}"
@@ -46,6 +54,14 @@ if [ -z "$RESTREAM_KEY" ]; then echo "❌ مفتاح ريستريم فارغ"; e
 echo "🔑 مفتاح ريستريم يبدأ بـ: ${RESTREAM_KEY:0:10}..."
 echo "🔧 ffmpeg: $(which ffmpeg) — $(ffmpeg -version 2>&1 | head -1 | awk '{print $3}')"
 echo "🔧 streamlink: $(which streamlink) — $(streamlink --version 2>&1)"
+
+# تحميل الشعار
+echo "⬇️ تحميل شعار ميستري تاون..."
+curl -sL "$LOGO_URL" -o "$LOGO_FILE" || wget -q "$LOGO_URL" -O "$LOGO_FILE"
+if [ ! -s "$LOGO_FILE" ]; then
+    echo "⚠️ فشل تحميل الشعار — سيعمل البث بدونه."
+    LOGO_FILE=""
+fi
 
 IFS=',' read -r -a STREAMERS_RANK <<< "$STREAMERS_LIST"
 
@@ -85,7 +101,6 @@ setup_fifo() {
     exec 3<>"$FIFO"
 }
 
-# ---------------------- المخرج الثابت (مع إعادة محاولة) ----------------------
 start_output() {
     local attempt=1
     while [ $attempt -le 3 ]; do
@@ -170,15 +185,29 @@ start_producer_standby() {
     stop_producer
     generate_ass
     echo "⏳ منتج شاشة الانتظار..."
-    ffmpeg -y -hide_banner -loglevel warning -nostdin \
-      -re -f lavfi -i color=c=${BG_COLOR}:s=1920x1080:r=30 \
-      -f lavfi -i anullsrc=r=44100:cl=stereo \
-      -map 0:v:0 -map 1:a:0 \
-      -vf "ass=/tmp/standby.ass" \
-      -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -r 30 -g 60 \
-      -c:a aac -b:a 128k -ar 44100 -ac 2 \
-      -max_muxing_queue_size 4096 \
-      -f mpegts "$FIFO" >/tmp/ffmpeg_in.log 2>&1 &
+    
+    if [ -n "$LOGO_FILE" ]; then
+        ffmpeg -y -hide_banner -loglevel warning -nostdin \
+          -re -f lavfi -i color=c=${BG_COLOR}:s=1920x1080:r=30 \
+          -loop 1 -i "$LOGO_FILE" \
+          -f lavfi -i anullsrc=r=44100:cl=stereo \
+          -filter_complex "[0:v]ass=/tmp/standby.ass[base];[1:v]scale=380:-1[logo];[base][logo]overlay=x=(W-w)/2:y=H-h-80:enable='between(t,0,${LOGO_SHOW_DURATION})'+between(t,${LOGO_CYCLE},$((LOGO_CYCLE+LOGO_SHOW_DURATION)))+between(t,$((LOGO_CYCLE*2)),$((LOGO_CYCLE*2+LOGO_SHOW_DURATION)))+between(t,$((LOGO_CYCLE*3)),$((LOGO_CYCLE*3+LOGO_SHOW_DURATION)))[vout]" \
+          -map "[vout]" -map 2:a:0 \
+          -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -r 30 -g 60 \
+          -c:a aac -b:a 128k -ar 44100 -ac 2 \
+          -max_muxing_queue_size 4096 \
+          -f mpegts "$FIFO" >/tmp/ffmpeg_in.log 2>&1 &
+    else
+        ffmpeg -y -hide_banner -loglevel warning -nostdin \
+          -re -f lavfi -i color=c=${BG_COLOR}:s=1920x1080:r=30 \
+          -f lavfi -i anullsrc=r=44100:cl=stereo \
+          -map 0:v:0 -map 1:a:0 \
+          -vf "ass=/tmp/standby.ass" \
+          -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -r 30 -g 60 \
+          -c:a aac -b:a 128k -ar 44100 -ac 2 \
+          -max_muxing_queue_size 4096 \
+          -f mpegts "$FIFO" >/tmp/ffmpeg_in.log 2>&1 &
+    fi
     PRODUCER_PID=$!
 }
 

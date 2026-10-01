@@ -3,86 +3,56 @@ name: 24/7 Master Multi-Streamer Broadcast
 on:
   workflow_dispatch:
     inputs:
-      streamers_list:
-        description: 'قائمة الستريمرز'
-        required: true
-        default: 'SXB,abuswe7l,firas,tmnaa,JASER'
       restream_key:
-        description: 'مفتاح ريستريم'
         required: false
         default: 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69'
-      quality:
-        description: 'جودة البث'
-        required: true
-        default: 'best'
   schedule:
-    - cron: '0 */5 * * *'
+    - cron: '0 */6 * * *'
 
 permissions:
   actions: write
   contents: read
 
 jobs:
-  broadcaster:
+  broadcast:
     runs-on: ubuntu-latest
     timeout-minutes: 355
-
     steps:
-      - name: جلب ملفات المستودع
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-      - name: Cache للـ pip
+      - name: Cache pip
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-streamlink-v1
+          key: pip-v1
 
-      - name: تثبيت FFmpeg و Streamlink و الخطوط
+      - name: Install
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq ffmpeg fonts-noto-core fonts-sil-scheherazade fontconfig libass-dev
-          pip3 install --user --upgrade streamlink
-          sudo fc-cache -f -v >/dev/null 2>&1
-          ffmpeg -version | head -1
-          ~/.local/bin/streamlink --version
+          pip3 install --user -q --upgrade streamlink
+          sudo fc-cache -f >/dev/null 2>&1
 
-      - name: إضافة ~/.local/bin إلى PATH
+      - name: PATH
         run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: جدولة الرن التالي ذاتياً (بعد 5س40د)
+      - name: Self-schedule 5h30m
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          STREAMERS="${{ github.event.inputs.streamers_list || 'SXB,abuswe7l,firas,tmnaa,JASER' }}"
           RKEY="${{ github.event.inputs.restream_key || 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69' }}"
-          QUAL="${{ github.event.inputs.quality || 'best' }}"
           setsid nohup bash -c "
-            sleep 20400
-            gh workflow run main.yml --ref '${{ github.ref_name }}' \
-              -f streamers_list='$STREAMERS' \
-              -f restream_key='$RKEY' \
-              -f quality='$QUAL'
-          " >/tmp/self_trigger.log 2>&1 < /dev/null &
-          echo "✅ الرن التالي مجدول بعد 5س40د"
+            sleep 19800
+            gh workflow run main.yml --ref '${{ github.ref_name }}' -f restream_key='$RKEY'
+          " >/tmp/sched.log 2>&1 < /dev/null &
+          echo "OK"
 
-      - name: تشغيل سكربت البث (مع إعادة محاولة)
+      - name: Broadcast
         env:
-          STREAMERS_LIST: ${{ github.event.inputs.streamers_list || 'SXB,abuswe7l,firas,tmnaa,JASER' }}
           RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69' }}
-          STREAM_QUALITY: ${{ github.event.inputs.quality || 'best' }}
+          STREAMERS_LIST: 'SXB,abuswe7l,firas,tmnaa,JASER'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
           chmod +x stream.sh
-          for i in 1 2 3; do
-            echo "════════ محاولة $i ════════"
-            ./stream.sh && break
-            echo "⚠️ انهار السكربت — إعادة بعد 15 ثانية..."
-            sleep 15
-          done
-
-      - name: تشخيص نهائي عند الإنهاء
-        if: always()
-        run: |
-          echo "===== OUT ====="; tail -n 50 /tmp/ffmpeg_out.log 2>/dev/null || echo "فارغ"
-          echo "===== IN ====="; tail -n 50 /tmp/ffmpeg_in.log 2>/dev/null || echo "فارغ"
+          ./stream.sh

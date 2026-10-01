@@ -2,49 +2,42 @@
 set +m
 
 # ==============================================================================
-# ⚙️⚙️⚙️  إعدادات شاشة الانتظار — عدّل هنا فقط  ⚙️⚙️⚙️
+# ⚙️⚙️⚙️  إعدادات شاشة الانتظار — Mystery Town (برتقالي + نص أسود)  ⚙️⚙️⚙️
 # ==============================================================================
 
-# النصوص
 STANDBY_TITLE="لم يبدأ البث المباشر بعد..."
-STANDBY_SUBTITLE="جاري انتظار قائمة ستريمرز MT"
+STANDBY_SUBTITLE="جاري انتظار قائمة الستريمرز المحددة"
 
-# نص ثالث اختياري
-STANDBY_EXTRA_ENABLED="no"          # "yes" أو "no"
-STANDBY_EXTRA="جار انتظار بث drb7h"
+STANDBY_EXTRA_ENABLED="no"
+STANDBY_EXTRA=""
 
-# الألوان بصيغة ASS: &HAABBGGRR (BB=أزرق، GG=أخضر، RR=أحمر)
-COLOR_TITLE="&H00000000"        # أسود
-COLOR_SUBTITLE="&H00000000"     # أسود
-COLOR_EXTRA="&H00000000"        # أسود
+# ألوان النصوص — أسود
+COLOR_TITLE="&H00000000"
+COLOR_SUBTITLE="&H00000000"
+COLOR_EXTRA="&H00000000"
 
-# الحد (Outline) والظل (Shadow) — أبيض
-COLOR_OUTLINE="&H00FFFFFF"      # أبيض
-COLOR_SHADOW="&H00FFFFFF"       # أبيض
+# الحد والظل — أبيض
+COLOR_OUTLINE="&H00FFFFFF"
+COLOR_SHADOW="&H00FFFFFF"
 OUTLINE_SIZE=3
 SHADOW_SIZE=2
 
-# لون خلفية الشاشة (hex عادي RRGGBB) — برتقالي غامق
+# خلفية الشاشة — برتقالي غامق
 BG_COLOR="0xCC5500"
 
-# أحجام الخطوط
 FONT_SIZE_TITLE=64
 FONT_SIZE_SUBTITLE=44
 FONT_SIZE_EXTRA=44
 
-# مواضع النصوص من أسفل الشاشة (بالبكسل)
 POS_TITLE=420
 POS_SUBTITLE=520
 POS_EXTRA=580
 
 # ==============================================================================
-# نهاية الإعدادات — لا تعدّل تحت هذا السطر
-# ==============================================================================
 
 
 RESTREAM_KEY="${RESTREAM_KEY:-}"
 QUALITY="${STREAM_QUALITY:-best}"
-
 [[ "$RESTREAM_KEY" == "X" || "$RESTREAM_KEY" == "x" ]] && RESTREAM_KEY=""
 
 if [ -z "$STREAMERS_LIST" ]; then echo "❌ قائمة الستريمرز فارغة"; exit 1; fi
@@ -86,36 +79,40 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# ---------------------- FIFO ----------------------
 setup_fifo() {
     rm -f "$FIFO"
     mkfifo "$FIFO"
     exec 3<>"$FIFO"
 }
 
-# ---------------------- المخرج الثابت ----------------------
+# ---------------------- المخرج الثابت (مع إعادة محاولة) ----------------------
 start_output() {
-    echo "🔗 فتح اتصال ثابت مع ريستريم..."
-    ffmpeg -y -hide_banner -loglevel warning -nostdin \
-      -thread_queue_size 1024 \
-      -fflags +genpts+igndts+discardcorrupt \
-      -max_delay 5000000 \
-      -f mpegts -i "$FIFO" \
-      -c copy \
-      -max_muxing_queue_size 4096 \
-      -flvflags no_duration_filesize \
-      -f flv "$RESTREAM_URL" >/tmp/ffmpeg_out.log 2>&1 &
-    OUTPUT_PID=$!
-    sleep 3
-    if ! kill -0 "$OUTPUT_PID" 2>/dev/null; then
-        echo "❌ فشل تشغيل المخرج."
-        cat /tmp/ffmpeg_out.log
-        exit 1
-    fi
-    echo "✅ المخرج شغال (PID: $OUTPUT_PID)"
+    local attempt=1
+    while [ $attempt -le 3 ]; do
+        echo "🔗 فتح اتصال ثابت مع ريستريم (محاولة $attempt/3)..."
+        ffmpeg -y -hide_banner -loglevel warning -nostdin \
+          -thread_queue_size 512 \
+          -probesize 32 -analyzeduration 0 \
+          -f mpegts -i "$FIFO" \
+          -c copy \
+          -max_muxing_queue_size 4096 \
+          -flvflags no_duration_filesize \
+          -f flv "$RESTREAM_URL" >/tmp/ffmpeg_out.log 2>&1 &
+        OUTPUT_PID=$!
+        sleep 4
+        if kill -0 "$OUTPUT_PID" 2>/dev/null; then
+            echo "✅ المخرج شغال (PID: $OUTPUT_PID)"
+            return 0
+        fi
+        echo "⚠️ محاولة $attempt فشلت:"
+        tail -n 5 /tmp/ffmpeg_out.log
+        attempt=$((attempt + 1))
+        sleep 2
+    done
+    echo "❌ فشل تشغيل المخرج بعد 3 محاولات."
+    exit 1
 }
 
-# ---------------------- إلغاء الرنات القديمة ----------------------
 cancel_old_runs() {
     if [ -z "$GH_TOKEN" ] || [ -z "$GITHUB_RUN_ID" ]; then
         echo "ℹ️ بدون GH_TOKEN — تخطي."
@@ -131,7 +128,6 @@ cancel_old_runs() {
     echo "✅ انتهى إلغاء الرنات."
 }
 
-# ---------------------- توليد ملف ASS من الإعدادات ----------------------
 generate_ass() {
     EXTRA_STYLE_LINE=""
     EXTRA_EVENT_LINE=""
@@ -213,9 +209,6 @@ start_producer_live() {
     return 0
 }
 
-# ============================================================
-#                    التشغيل الرئيسي
-# ============================================================
 setup_fifo
 start_output
 start_producer_standby
@@ -227,8 +220,8 @@ sleep 2
 
 while true; do
     if ! kill -0 "$OUTPUT_PID" 2>/dev/null; then
-        echo "❌ المخرج توقف — إنهاء."
-        exit 1
+        echo "⚠️ المخرج توقف — إعادة تشغيل..."
+        start_output || exit 1
     fi
 
     FOUND_LIVE=false

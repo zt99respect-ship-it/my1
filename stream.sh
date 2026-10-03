@@ -2,21 +2,20 @@
 set +m
 
 # ═════════════════════════════════════════════
-#  إعدادات البث — Respect
+#  إعدادات البث — Mystery Town
 # ═════════════════════════════════════════════
 
-TITLE="لم يبدأ ستريمرز ريسبكت"
-SUBTITLE="جاري انتضار ستريمرز ريسبكت المذكورين اعلاه"
+TITLE="لم يبدأ ستريمرز ميستري تاون"
+SUBTITLE="جاري انتضار ستريمرز ميستري تاون المذكورين اعلاه"
 LABEL="قائمة الستريمرز:"
 
 # ألوان
-COLOR_T="#b266ff"
+COLOR_T="#ff7700"
 COLOR_S="#ffffff"
-COLOR_L="#b266ff"
-COLOR_NAME="#d9b3ff"
-BG_TOP="#0d0518"
-BG_BOT="#1a0a30"
-GLOW_RGB="150,80,220"
+COLOR_L="#ff8800"
+COLOR_NAME="#ffb366"
+BG_TOP="#0a0814"
+BG_BOT="#14060a"
 
 # أحجام الخطوط
 FS_T=100
@@ -30,7 +29,7 @@ Y_TITLE=200
 Y_SUB=370
 
 # الشعار
-LOGO_URL="https://i.top4top.io/p_39264fv5g0.png"
+LOGO_URL="https://k.top4top.io/p_39265ztwc0.png"
 LOGO_W=150
 LOGO_BOTTOM=40
 LOGO_SHOW=5
@@ -60,18 +59,17 @@ echo "🔤 عربي: $FONT_AR"
 echo "🔤 إنجليزي: $FONT_EN"
 
 IFS=',' read -r -a STREAMERS <<< "$STREAMERS_LIST"
-echo "🔢 عدد الستريمرز: ${#STREAMERS[@]}"
 
 # ═════════ توليد الخلفية ═════════
-cat > /tmp/make_bg.py <<PYEOF
+cat > /tmp/make_bg.py <<'PYEOF'
 from PIL import Image, ImageDraw, ImageFilter
 import sys
 
 W, H = 1920, 1080
 out = sys.argv[1]
 
-BG_TOP = (13, 5, 24)
-BG_BOT = (26, 10, 48)
+BG_TOP = (10, 8, 20)
+BG_BOT = (20, 6, 10)
 
 img = Image.new("RGB", (W, H))
 d = ImageDraw.Draw(img)
@@ -86,7 +84,7 @@ img = img.convert("RGBA")
 
 glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 gd = ImageDraw.Draw(glow)
-gd.ellipse([W//2 - 700, H//2 - 500, W//2 + 700, H//2 + 500], fill=(150, 80, 220, 65))
+gd.ellipse([W//2 - 700, H//2 - 500, W//2 + 700, H//2 + 500], fill=(255, 120, 20, 70))
 glow = glow.filter(ImageFilter.GaussianBlur(250))
 img = Image.alpha_composite(img, glow)
 
@@ -185,33 +183,29 @@ render_en() {
     python3 /tmp/render.py "$1" "$2" "$3" "$4" "$FONT_EN" "$5" "$6" "ltr"
 }
 
-# ═════════ قائمة الستريمرز (3 أسطر) ═════════
+# ═════════ قائمة الستريمرز ═════════
 build_list_lines() {
     local total=${#STREAMERS[@]}
-    local per_line=$(( (total + 2) / 3 ))
+    local per_line=$(( (total + 1) / 2 ))
     [ $per_line -lt 4 ] && per_line=4
-    local line1="" line2="" line3="" i=0
+    local line1="" line2="" i=0
     for S in "${STREAMERS[@]}"; do
         S=$(echo "$S" | xargs)
         [ -z "$S" ] && continue
         if [ $i -lt $per_line ]; then
             [ -z "$line1" ] && line1="$S" || line1="$line1 ◆ $S"
-        elif [ $i -lt $((per_line * 2)) ]; then
-            [ -z "$line2" ] && line2="$S" || line2="$line2 ◆ $S"
         else
-            [ -z "$line3" ] && line3="$S" || line3="$line3 ◆ $S"
+            [ -z "$line2" ] && line2="$S" || line2="$line2 ◆ $S"
         fi
         i=$((i+1))
     done
     echo "$line1"
     echo "$line2"
-    echo "$line3"
 }
 
 mapfile -t LIST_LINES < <(build_list_lines)
 LIST_LINE1="${LIST_LINES[0]}"
 LIST_LINE2="${LIST_LINES[1]}"
-LIST_LINE3="${LIST_LINES[2]}"
 
 # ═════════ الشعار ═════════
 LOGO=""
@@ -244,10 +238,6 @@ if [ -n "$LIST_LINE2" ]; then
     L2_UPPER=$(echo "$LIST_LINE2" | tr '[:lower:]' '[:upper:]')
     render_en "$L2_UPPER" "$COLOR_NAME" $FS_NAME /tmp/txt/l2.png "black" 1
 fi
-if [ -n "$LIST_LINE3" ]; then
-    L3_UPPER=$(echo "$LIST_LINE3" | tr '[:lower:]' '[:upper:]')
-    render_en "$L3_UPPER" "$COLOR_NAME" $FS_NAME /tmp/txt/l3.png "black" 1
-fi
 
 render_ar "$TITLE" "$COLOR_T" $FS_T /tmp/txt/title.png "black" 4
 render_ar "$SUBTITLE" "$COLOR_S" $FS_S /tmp/txt/sub.png "black" 3
@@ -258,11 +248,11 @@ echo "✅ اكتمل الرسم"
 # ═════════ FIFO ═════════
 rm -f "$FIFO"; mkfifo "$FIFO"; exec 3<>"$FIFO"
 
-# ═════════ فلتر الانتظار (3 أسطر) ═════════
+# ═════════ فلتر الانتظار ═════════
 standby_filter() {
     local logo_idx=$1
     local n2=$2
-    local n3=$3
+    # inputs: 0=bg, 1=label, 2=l1, 3=l2 (اختياري), 4=title, 5=sub, 6=logo (اختياري)
     local f=""
     local next="0:v"
     local idx=1
@@ -281,19 +271,13 @@ standby_filter() {
         next="c"; idx=$((idx+1))
     fi
 
-    # l3 (اختياري)
-    if [ "$n3" = "1" ]; then
-        f="$f;[${next}][${idx}:v]overlay=x=W-w-40:y=$((Y_LIST + 50 + (FS_NAME + 20) * 2))[d]"
-        next="d"; idx=$((idx+1))
-    fi
-
     # title (وسط)
-    f="$f;[${next}][${idx}:v]overlay=x=(W-w)/2:y=$Y_TITLE[e]"
-    next="e"; idx=$((idx+1))
+    f="$f;[${next}][${idx}:v]overlay=x=(W-w)/2:y=$Y_TITLE[d]"
+    next="d"; idx=$((idx+1))
 
     # subtitle (وسط)
-    f="$f;[${next}][${idx}:v]overlay=x=(W-w)/2:y=$Y_SUB[f]"
-    next="f"; idx=$((idx+1))
+    f="$f;[${next}][${idx}:v]overlay=x=(W-w)/2:y=$Y_SUB[e]"
+    next="e"; idx=$((idx+1))
 
     # logo (وسط أسفل، مصغّر)
     if [ "$logo_idx" -ge 0 ]; then
@@ -310,14 +294,10 @@ run() {
     inputs+=(-loop 1 -framerate 30 -i /tmp/txt/label.png)
     inputs+=(-loop 1 -framerate 30 -i /tmp/txt/l1.png)
     local next_idx=3
-    local n2=0; local n3=0
+    local n2=0
     if [ -s /tmp/txt/l2.png ]; then
         inputs+=(-loop 1 -framerate 30 -i /tmp/txt/l2.png)
-        n2=1; next_idx=$((next_idx + 1))
-    fi
-    if [ -s /tmp/txt/l3.png ]; then
-        inputs+=(-loop 1 -framerate 30 -i /tmp/txt/l3.png)
-        n3=1; next_idx=$((next_idx + 1))
+        n2=1; next_idx=4
     fi
     inputs+=(-loop 1 -framerate 30 -i /tmp/txt/title.png)
     next_idx=$((next_idx + 1))
@@ -332,7 +312,7 @@ run() {
     local audio_idx=$next_idx
 
     local filter
-    filter=$(standby_filter "$logo_idx" "$n2" "$n3")
+    filter=$(standby_filter "$logo_idx" "$n2")
 
     ffmpeg -y -hide_banner -loglevel warning -nostdin \
         "${inputs[@]}" -filter_complex "$filter" \
@@ -386,7 +366,7 @@ run() {
                 MODE="فارغ"; ACTIVE=""; ACTIVE_IDX=-1
             else
                 local f2
-                f2=$(standby_filter "$logo_idx" "$n2" "$n3")
+                f2=$(standby_filter "$logo_idx" "$n2")
                 ffmpeg -y -hide_banner -loglevel warning -nostdin \
                     "${inputs[@]}" -filter_complex "$f2" \
                     -map "[v]" -map ${audio_idx}:a:0 \
@@ -450,7 +430,7 @@ run() {
                 wait $PROD 2>/dev/null
                 sleep 1
                 local f3
-                f3=$(standby_filter "$logo_idx" "$n2" "$n3")
+                f3=$(standby_filter "$logo_idx" "$n2")
                 ffmpeg -y -hide_banner -loglevel warning -nostdin \
                     "${inputs[@]}" -filter_complex "$f3" \
                     -map "[v]" -map ${audio_idx}:a:0 \

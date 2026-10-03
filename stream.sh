@@ -14,7 +14,6 @@ COLOR_T="#ff7700"
 COLOR_S="#ffffff"
 COLOR_L="#ff8800"
 COLOR_NAME="#ffb366"
-COLOR_LIVE="#ff8800"
 BG_TOP="#0a0814"
 BG_BOT="#14060a"
 
@@ -31,8 +30,8 @@ Y_SUB=370
 
 # الشعار
 LOGO_URL="https://k.top4top.io/p_39265ztwc0.png"
-LOGO_W=210
-LOGO_BOTTOM=60
+LOGO_W=150
+LOGO_BOTTOM=40
 LOGO_SHOW=5
 LOGO_CYCLE=7
 
@@ -83,14 +82,12 @@ for y in range(H):
 
 img = img.convert("RGBA")
 
-# هالة برتقالية خفيفة في الوسط
 glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 gd = ImageDraw.Draw(glow)
 gd.ellipse([W//2 - 700, H//2 - 500, W//2 + 700, H//2 + 500], fill=(255, 120, 20, 70))
 glow = glow.filter(ImageFilter.GaussianBlur(250))
 img = Image.alpha_composite(img, glow)
 
-# نمط الماس في الأسفل
 pattern = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 pd = ImageDraw.Draw(pattern)
 size = 90
@@ -120,7 +117,7 @@ img.convert("RGB").save(out, "PNG")
 print(f"OK: {out}")
 PYEOF
 
-# ═════════ دالة تحميل خط (مع دعم variable) ═════════
+# ═════════ دالة تحميل خط ═════════
 FONT_LOADER='
 def load_font(path, size, weight=700):
     from PIL import ImageFont
@@ -133,12 +130,12 @@ def load_font(path, size, weight=700):
             font.set_variation_by_axes([0, weight])
         elif len(axes) == 3:
             font.set_variation_by_axes([0, weight, 0])
-    except Exception as e:
+    except Exception:
         pass
     return font
 '
 
-# ═════════ سكربت رسم النص الثابت ═════════
+# ═════════ سكربت رسم النص ═════════
 cat > /tmp/render.py <<PYEOF
 import sys
 from PIL import Image, ImageDraw
@@ -231,10 +228,8 @@ BG_IMG="/tmp/bg.png"
 echo "🖌️ رسم النصوص..."
 mkdir -p /tmp/txt && rm -f /tmp/txt/*.png
 
-# قائمة الستريمرز (بالعربية + الأسماء Orbitron)
 render_ar "$LABEL" "$COLOR_L" $FS_L /tmp/txt/label.png "black" 2
 
-# الأسماء: orbitron
 if [ -n "$LIST_LINE1" ]; then
     L1_UPPER=$(echo "$LIST_LINE1" | tr '[:lower:]' '[:upper:]')
     render_en "$L1_UPPER" "$COLOR_NAME" $FS_NAME /tmp/txt/l1.png "black" 1
@@ -244,10 +239,7 @@ if [ -n "$LIST_LINE2" ]; then
     render_en "$L2_UPPER" "$COLOR_NAME" $FS_NAME /tmp/txt/l2.png "black" 1
 fi
 
-# العنوان (Cairo)
 render_ar "$TITLE" "$COLOR_T" $FS_T /tmp/txt/title.png "black" 4
-
-# السطر الثاني (Cairo)
 render_ar "$SUBTITLE" "$COLOR_S" $FS_S /tmp/txt/sub.png "black" 3
 
 [ ! -s /tmp/txt/title.png ] && { echo "❌ فشل الرسم"; exit 1; }
@@ -257,35 +249,6 @@ echo "✅ اكتمل الرسم"
 rm -f "$FIFO"; mkfifo "$FIFO"; exec 3<>"$FIFO"
 
 # ═════════ فلتر الانتظار ═════════
-standby_filter() {
-    local logo_idx=$1
-    local n2=$2
-    local f=""
-    # label + list line1 على اليمين (RTL)
-    f="[1:v][2:v]overlay=x=W-w-40:y=$Y_LIST[a]"  # label يمين
-    f="$f;[a][3:v]overlay=x=W-w-40:y=$((Y_LIST + 50))[b]"  # l1 تحت label
-    local next="b"
-    local idx=4
-    if [ "$n2" = "1" ]; then
-        f="$f;[${next}][${idx}:v]overlay=x=W-w-40:y=$((Y_LIST + 50 + FS_NAME + 15))[c]"
-        next="c"
-        idx=$((idx + 1))
-    fi
-    # title + subtitle في الوسط
-    f="$f;[${next}][4:v]overlay=x=(W-w)/2:y=$Y_TITLE[d]"  # هذه تحتاج تعديل
-    next="d"
-    f="$f;[${next}][5:v]overlay=x=(W-w)/2:y=$Y_SUB[e]"
-    next="e"
-    if [ "$logo_idx" -ge 0 ]; then
-        f="$f;[${next}][${logo_idx}:v]overlay=x=(W-w)/2:y=H-h-$LOGO_BOTTOM:enable='lt(mod(t\,$LOGO_CYCLE)\,$LOGO_SHOW)'[v]"
-    else
-        f="$f;[${next}]null[v]"
-    fi
-    echo "$f"
-}
-
-# ملاحظة: standby_filter تحتاج ضبط يدوي. سأعيد كتابتها بشكل مرتب أدناه.
-
 standby_filter() {
     local logo_idx=$1
     local n2=$2
@@ -316,9 +279,9 @@ standby_filter() {
     f="$f;[${next}][${idx}:v]overlay=x=(W-w)/2:y=$Y_SUB[e]"
     next="e"; idx=$((idx+1))
 
-    # logo (اختياري)
+    # logo (وسط أسفل، مصغّر)
     if [ "$logo_idx" -ge 0 ]; then
-        f="$f;[${next}][${logo_idx}:v]overlay=x=(W-w)/2:y=H-h-$LOGO_BOTTOM:enable='lt(mod(t\,$LOGO_CYCLE)\,$LOGO_SHOW)'[v]"
+        f="$f;[${logo_idx}:v]scale=${LOGO_W}:-1[logosc];[${next}][logosc]overlay=x=(W-w)/2:y=H-h-$LOGO_BOTTOM:enable='lt(mod(t\,$LOGO_CYCLE)\,$LOGO_SHOW)'[v]"
     else
         f="$f;[${next}]null[v]"
     fi
@@ -327,18 +290,18 @@ standby_filter() {
 
 run() {
     local inputs=()
-    inputs+=(-loop 1 -framerate 30 -i /tmp/bg.png)   # 0
-    inputs+=(-loop 1 -framerate 30 -i /tmp/txt/label.png)  # 1
-    inputs+=(-loop 1 -framerate 30 -i /tmp/txt/l1.png)     # 2
+    inputs+=(-loop 1 -framerate 30 -i /tmp/bg.png)
+    inputs+=(-loop 1 -framerate 30 -i /tmp/txt/label.png)
+    inputs+=(-loop 1 -framerate 30 -i /tmp/txt/l1.png)
     local next_idx=3
     local n2=0
     if [ -s /tmp/txt/l2.png ]; then
-        inputs+=(-loop 1 -framerate 30 -i /tmp/txt/l2.png) # 3
+        inputs+=(-loop 1 -framerate 30 -i /tmp/txt/l2.png)
         n2=1; next_idx=4
     fi
-    inputs+=(-loop 1 -framerate 30 -i /tmp/txt/title.png)  # next
+    inputs+=(-loop 1 -framerate 30 -i /tmp/txt/title.png)
     next_idx=$((next_idx + 1))
-    inputs+=(-loop 1 -framerate 30 -i /tmp/txt/sub.png)    # next
+    inputs+=(-loop 1 -framerate 30 -i /tmp/txt/sub.png)
     next_idx=$((next_idx + 1))
     local logo_idx=-1
     if [ -n "$LOGO" ]; then

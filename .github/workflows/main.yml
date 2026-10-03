@@ -5,7 +5,7 @@ on:
     inputs:
       restream_key:
         required: false
-        default: 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69'
+        default: 're_12416925_event6f6e2607a46347b59efab0c722ed3e53'
   schedule:
     - cron: '0 */6 * * *'
 
@@ -40,7 +40,6 @@ jobs:
           echo "🔤 تحميل الخطوط..."
           mkdir -p ~/.fonts
 
-          # خط عربي — Cairo
           CAIRO_OK=0
           for URL in \
             "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/cairo/Cairo%5Bslnt%2Cwght%5D.ttf" \
@@ -59,7 +58,6 @@ jobs:
             curl -sL --max-time 30 "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io@main/fonts/NotoSansArabic/hinted/ttf/NotoSansArabic-Bold.ttf" -o ~/.fonts/Cairo-var.ttf
           fi
 
-          # خط إنجليزي — Orbitron
           ORB_OK=0
           for URL in \
             "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/orbitron/Orbitron%5Bwght%5D.ttf" \
@@ -96,7 +94,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RKEY="${{ github.event.inputs.restream_key || 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69' }}"
+          RKEY="${{ github.event.inputs.restream_key || 're_12416925_event6f6e2607a46347b59efab0c722ed3e53' }}"
           setsid nohup bash -c "
             sleep 19800
             gh workflow run main.yml --ref '${{ github.ref_name }}' -f restream_key='$RKEY'
@@ -105,8 +103,8 @@ jobs:
 
       - name: تشغيل البث
         env:
-          RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69' }}
-          STREAMERS_LIST: 'SXB,abuswe7l,firas,tmnaa,JASER'
+          RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12416925_event6f6e2607a46347b59efab0c722ed3e53' }}
+          STREAMERS_LIST: 'drb7h,S5B,ABO8ALYY,ID7O,F1AISAL,xmusabrt,abo_khrbaa,Peerless,Seagull,iMonkey_D,FHLWY,aymnalsatam,IB6H,okb8,Hook,wolf,W1pey,RAYAN,moustache,klash,ALRND,Rayan_a3'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |

@@ -2,17 +2,17 @@
 set +m
 
 # ═════════════════════════════════════════════
-#  إعدادات البث — Respect
+#  إعدادات البث — Mystery Town
 # ═════════════════════════════════════════════
 
-TITLE="لم يبدأ ستريمرز ريسبكت"
-SUBTITLE="جاري انتضار ستريمرز ريسبكت المذكورين اعلاه"
+TITLE="لم يبدأ ستريمرز ميستري تاون"
+SUBTITLE="جاري انتضار ستريمرز ميستري تاون المذكورين اعلاه"
 LABEL="قائمة الستريمرز:"
 
-COLOR_T="#b266ff"
+COLOR_T="#ff7700"
 COLOR_S="#ffffff"
-COLOR_L="#b266ff"
-COLOR_NAME="#d9b3ff"
+COLOR_L="#ff8800"
+COLOR_NAME="#ffb366"
 
 FS_T=100
 FS_S=58
@@ -23,7 +23,7 @@ Y_LIST=60
 Y_TITLE=200
 Y_SUB=370
 
-LOGO_URL="https://i.top4top.io/p_39264fv5g0.png"
+LOGO_URL="https://k.top4top.io/p_39265ztwc0.png"
 LOGO_W=150
 LOGO_BOTTOM=40
 LOGO_SHOW=5
@@ -64,8 +64,8 @@ import sys
 
 W, H = 1920, 1080
 out = sys.argv[1]
-BG_TOP = (13, 5, 24)
-BG_BOT = (26, 10, 48)
+BG_TOP = (10, 8, 20)
+BG_BOT = (20, 6, 10)
 
 img = Image.new("RGB", (W, H))
 d = ImageDraw.Draw(img)
@@ -79,7 +79,7 @@ for y in range(H):
 img = img.convert("RGBA")
 glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 gd = ImageDraw.Draw(glow)
-gd.ellipse([W//2 - 700, H//2 - 500, W//2 + 700, H//2 + 500], fill=(150, 80, 220, 65))
+gd.ellipse([W//2 - 700, H//2 - 500, W//2 + 700, H//2 + 500], fill=(255, 120, 20, 70))
 glow = glow.filter(ImageFilter.GaussianBlur(250))
 img = Image.alpha_composite(img, glow)
 

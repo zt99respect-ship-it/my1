@@ -9,32 +9,28 @@ TITLE="لم يبدأ ستريمرز ميستري تاون"
 SUBTITLE="جاري انتضار ستريمرز ميستري تاون المذكورين اعلاه"
 LABEL="قائمة الستريمرز:"
 
-# ألوان
 COLOR_T="#ff7700"
 COLOR_S="#ffffff"
 COLOR_L="#ff8800"
 COLOR_NAME="#ffb366"
-BG_TOP="#0a0814"
-BG_BOT="#14060a"
 
-# أحجام الخطوط
 FS_T=100
 FS_S=58
 FS_L=22
 FS_NAME=22
 
-# مواضع
 Y_LIST=60
 Y_TITLE=200
 Y_SUB=370
 
-# الشعار
 LOGO_URL="https://k.top4top.io/p_39265ztwc0.png"
 LOGO_W=150
 LOGO_BOTTOM=40
 LOGO_SHOW=5
 LOGO_CYCLE=7
 
+FPS=60
+GOP=120
 # ═════════════════════════════════════════════
 
 RESTREAM_KEY="${RESTREAM_KEY:-}"
@@ -45,7 +41,6 @@ UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Ge
 RESTREAM_URL="rtmp://live.restream.io/live/$RESTREAM_KEY"
 FIFO="/tmp/relay.ts"
 
-# ─── الخطوط ───
 FONT_AR=""
 for C in "$HOME/.fonts/Cairo-var.ttf" "$HOME/.fonts/NotoSansArabic-Bold.ttf"; do
     [ -s "$C" ] && { FONT_AR="$C"; break; }
@@ -57,8 +52,10 @@ FONT_EN="$HOME/.fonts/Orbitron-var.ttf"
 
 echo "🔤 عربي: $FONT_AR"
 echo "🔤 إنجليزي: $FONT_EN"
+echo "🎬 FPS: $FPS | GOP: $GOP"
 
 IFS=',' read -r -a STREAMERS <<< "$STREAMERS_LIST"
+echo "🔢 عدد الستريمرز: ${#STREAMERS[@]}"
 
 # ═════════ توليد الخلفية ═════════
 cat > /tmp/make_bg.py <<'PYEOF'
@@ -67,7 +64,6 @@ import sys
 
 W, H = 1920, 1080
 out = sys.argv[1]
-
 BG_TOP = (10, 8, 20)
 BG_BOT = (20, 6, 10)
 
@@ -81,7 +77,6 @@ for y in range(H):
     d.line([(0, y), (W, y)], fill=(r, g, b))
 
 img = img.convert("RGBA")
-
 glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 gd = ImageDraw.Draw(glow)
 gd.ellipse([W//2 - 700, H//2 - 500, W//2 + 700, H//2 + 500], fill=(255, 120, 20, 70))
@@ -95,13 +90,11 @@ start_y = H - 320
 row = 0
 y = start_y
 while y < H + size:
-    col = 0
     x = (size // 2) if row % 2 else 0
     while x < W + size:
         pts = [(x, y - size//2), (x + size//2, y), (x, y + size//2), (x - size//2, y)]
         pd.polygon(pts, outline=(0, 0, 0, 220), width=2)
         x += size
-        col += 1
     y += size // 2
     row += 1
 
@@ -117,7 +110,6 @@ img.convert("RGB").save(out, "PNG")
 print(f"OK: {out}")
 PYEOF
 
-# ═════════ دالة تحميل خط ═════════
 FONT_LOADER='
 def load_font(path, size, weight=700):
     from PIL import ImageFont
@@ -135,7 +127,6 @@ def load_font(path, size, weight=700):
     return font
 '
 
-# ═════════ سكربت رسم النص ═════════
 cat > /tmp/render.py <<PYEOF
 import sys
 from PIL import Image, ImageDraw
@@ -176,38 +167,36 @@ d.text((x, y), text, font=font, fill=color, direction=direction)
 img.save(output, "PNG")
 PYEOF
 
-render_ar() {
-    python3 /tmp/render.py "$1" "$2" "$3" "$4" "$FONT_AR" "$5" "$6" "rtl"
-}
-render_en() {
-    python3 /tmp/render.py "$1" "$2" "$3" "$4" "$FONT_EN" "$5" "$6" "ltr"
-}
+render_ar() { python3 /tmp/render.py "$1" "$2" "$3" "$4" "$FONT_AR" "$5" "$6" "rtl"; }
+render_en() { python3 /tmp/render.py "$1" "$2" "$3" "$4" "$FONT_EN" "$5" "$6" "ltr"; }
 
-# ═════════ قائمة الستريمرز ═════════
 build_list_lines() {
     local total=${#STREAMERS[@]}
-    local per_line=$(( (total + 1) / 2 ))
+    local per_line=$(( (total + 2) / 3 ))
     [ $per_line -lt 4 ] && per_line=4
-    local line1="" line2="" i=0
+    local line1="" line2="" line3="" i=0
     for S in "${STREAMERS[@]}"; do
         S=$(echo "$S" | xargs)
         [ -z "$S" ] && continue
         if [ $i -lt $per_line ]; then
             [ -z "$line1" ] && line1="$S" || line1="$line1 ◆ $S"
-        else
+        elif [ $i -lt $((per_line * 2)) ]; then
             [ -z "$line2" ] && line2="$S" || line2="$line2 ◆ $S"
+        else
+            [ -z "$line3" ] && line3="$S" || line3="$line3 ◆ $S"
         fi
         i=$((i+1))
     done
     echo "$line1"
     echo "$line2"
+    echo "$line3"
 }
 
 mapfile -t LIST_LINES < <(build_list_lines)
 LIST_LINE1="${LIST_LINES[0]}"
 LIST_LINE2="${LIST_LINES[1]}"
+LIST_LINE3="${LIST_LINES[2]}"
 
-# ═════════ الشعار ═════════
 LOGO=""
 echo "⬇️ الشعار..."
 if curl -sL --max-time 25 -A "Mozilla/5.0" "$LOGO_URL" -o /tmp/logo_src.png 2>/dev/null; then
@@ -218,26 +207,18 @@ if curl -sL --max-time 25 -A "Mozilla/5.0" "$LOGO_URL" -o /tmp/logo_src.png 2>/d
 fi
 [ -z "$LOGO" ] && echo "⚠️ بلا شعار"
 
-# ═════════ توليد الخلفية ═════════
 echo "🎨 توليد الخلفية..."
 python3 /tmp/make_bg.py /tmp/bg.png
 BG_IMG="/tmp/bg.png"
 [ ! -s "$BG_IMG" ] && { echo "❌ فشل الخلفية"; exit 1; }
 
-# ═════════ رسم النصوص ═════════
 echo "🖌️ رسم النصوص..."
 mkdir -p /tmp/txt && rm -f /tmp/txt/*.png
 
 render_ar "$LABEL" "$COLOR_L" $FS_L /tmp/txt/label.png "black" 2
-
-if [ -n "$LIST_LINE1" ]; then
-    L1_UPPER=$(echo "$LIST_LINE1" | tr '[:lower:]' '[:upper:]')
-    render_en "$L1_UPPER" "$COLOR_NAME" $FS_NAME /tmp/txt/l1.png "black" 1
-fi
-if [ -n "$LIST_LINE2" ]; then
-    L2_UPPER=$(echo "$LIST_LINE2" | tr '[:lower:]' '[:upper:]')
-    render_en "$L2_UPPER" "$COLOR_NAME" $FS_NAME /tmp/txt/l2.png "black" 1
-fi
+[ -n "$LIST_LINE1" ] && render_en "$(echo "$LIST_LINE1" | tr '[:lower:]' '[:upper:]')" "$COLOR_NAME" $FS_NAME /tmp/txt/l1.png "black" 1
+[ -n "$LIST_LINE2" ] && render_en "$(echo "$LIST_LINE2" | tr '[:lower:]' '[:upper:]')" "$COLOR_NAME" $FS_NAME /tmp/txt/l2.png "black" 1
+[ -n "$LIST_LINE3" ] && render_en "$(echo "$LIST_LINE3" | tr '[:lower:]' '[:upper:]')" "$COLOR_NAME" $FS_NAME /tmp/txt/l3.png "black" 1
 
 render_ar "$TITLE" "$COLOR_T" $FS_T /tmp/txt/title.png "black" 4
 render_ar "$SUBTITLE" "$COLOR_S" $FS_S /tmp/txt/sub.png "black" 3
@@ -245,41 +226,37 @@ render_ar "$SUBTITLE" "$COLOR_S" $FS_S /tmp/txt/sub.png "black" 3
 [ ! -s /tmp/txt/title.png ] && { echo "❌ فشل الرسم"; exit 1; }
 echo "✅ اكتمل الرسم"
 
-# ═════════ FIFO ═════════
 rm -f "$FIFO"; mkfifo "$FIFO"; exec 3<>"$FIFO"
 
-# ═════════ فلتر الانتظار ═════════
 standby_filter() {
     local logo_idx=$1
     local n2=$2
-    # inputs: 0=bg, 1=label, 2=l1, 3=l2 (اختياري), 4=title, 5=sub, 6=logo (اختياري)
+    local n3=$3
     local f=""
     local next="0:v"
     local idx=1
 
-    # label (يمين علوي)
     f="[0:v][${idx}:v]overlay=x=W-w-40:y=$Y_LIST[a]"
     next="a"; idx=$((idx+1))
 
-    # l1
     f="$f;[${next}][${idx}:v]overlay=x=W-w-40:y=$((Y_LIST + 50))[b]"
     next="b"; idx=$((idx+1))
 
-    # l2 (اختياري)
     if [ "$n2" = "1" ]; then
         f="$f;[${next}][${idx}:v]overlay=x=W-w-40:y=$((Y_LIST + 50 + FS_NAME + 20))[c]"
         next="c"; idx=$((idx+1))
     fi
+    if [ "$n3" = "1" ]; then
+        f="$f;[${next}][${idx}:v]overlay=x=W-w-40:y=$((Y_LIST + 50 + (FS_NAME + 20) * 2))[d]"
+        next="d"; idx=$((idx+1))
+    fi
 
-    # title (وسط)
-    f="$f;[${next}][${idx}:v]overlay=x=(W-w)/2:y=$Y_TITLE[d]"
-    next="d"; idx=$((idx+1))
-
-    # subtitle (وسط)
-    f="$f;[${next}][${idx}:v]overlay=x=(W-w)/2:y=$Y_SUB[e]"
+    f="$f;[${next}][${idx}:v]overlay=x=(W-w)/2:y=$Y_TITLE[e]"
     next="e"; idx=$((idx+1))
 
-    # logo (وسط أسفل، مصغّر)
+    f="$f;[${next}][${idx}:v]overlay=x=(W-w)/2:y=$Y_SUB[f]"
+    next="f"; idx=$((idx+1))
+
     if [ "$logo_idx" -ge 0 ]; then
         f="$f;[${logo_idx}:v]scale=${LOGO_W}:-1[logosc];[${next}][logosc]overlay=x=(W-w)/2:y=H-h-$LOGO_BOTTOM:enable='lt(mod(t\,$LOGO_CYCLE)\,$LOGO_SHOW)'[v]"
     else
@@ -290,34 +267,39 @@ standby_filter() {
 
 run() {
     local inputs=()
-    inputs+=(-loop 1 -framerate 30 -i /tmp/bg.png)
-    inputs+=(-loop 1 -framerate 30 -i /tmp/txt/label.png)
-    inputs+=(-loop 1 -framerate 30 -i /tmp/txt/l1.png)
+    inputs+=(-loop 1 -framerate $FPS -i /tmp/bg.png)
+    inputs+=(-loop 1 -framerate $FPS -i /tmp/txt/label.png)
+    inputs+=(-loop 1 -framerate $FPS -i /tmp/txt/l1.png)
     local next_idx=3
-    local n2=0
+    local n2=0; local n3=0
     if [ -s /tmp/txt/l2.png ]; then
-        inputs+=(-loop 1 -framerate 30 -i /tmp/txt/l2.png)
-        n2=1; next_idx=4
+        inputs+=(-loop 1 -framerate $FPS -i /tmp/txt/l2.png)
+        n2=1; next_idx=$((next_idx + 1))
     fi
-    inputs+=(-loop 1 -framerate 30 -i /tmp/txt/title.png)
+    if [ -s /tmp/txt/l3.png ]; then
+        inputs+=(-loop 1 -framerate $FPS -i /tmp/txt/l3.png)
+        n3=1; next_idx=$((next_idx + 1))
+    fi
+    inputs+=(-loop 1 -framerate $FPS -i /tmp/txt/title.png)
     next_idx=$((next_idx + 1))
-    inputs+=(-loop 1 -framerate 30 -i /tmp/txt/sub.png)
+    inputs+=(-loop 1 -framerate $FPS -i /tmp/txt/sub.png)
     next_idx=$((next_idx + 1))
     local logo_idx=-1
     if [ -n "$LOGO" ]; then
-        inputs+=(-loop 1 -framerate 30 -i "$LOGO")
+        inputs+=(-loop 1 -framerate $FPS -i "$LOGO")
         logo_idx=$next_idx; next_idx=$((next_idx + 1))
     fi
     inputs+=(-f lavfi -i "anullsrc=r=44100:cl=stereo")
     local audio_idx=$next_idx
 
     local filter
-    filter=$(standby_filter "$logo_idx" "$n2")
+    filter=$(standby_filter "$logo_idx" "$n2" "$n3")
 
     ffmpeg -y -hide_banner -loglevel warning -nostdin \
         "${inputs[@]}" -filter_complex "$filter" \
         -map "[v]" -map ${audio_idx}:a:0 \
-        -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 \
+        -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p \
+        -r $FPS -g $GOP \
         -c:a aac -b:a 128k -ar 44100 -ac 2 \
         -max_muxing_queue_size 4096 \
         -f mpegts "$FIFO" >/tmp/prod.log 2>&1 &
@@ -329,11 +311,12 @@ run() {
     echo "✅ منتج الانتظار (PID: $PROD)"
 
     ffmpeg -y -hide_banner -loglevel warning -nostdin \
-        -thread_queue_size 512 \
+        -thread_queue_size 1024 \
         -fflags +genpts+igndts+discardcorrupt \
         -analyzeduration 5000000 -probesize 2000000 \
+        -max_delay 2000000 \
         -f mpegts -i "$FIFO" \
-        -c copy -max_muxing_queue_size 4096 \
+        -c copy -max_muxing_queue_size 8192 \
         -flvflags no_duration_filesize \
         -f flv "$RESTREAM_URL" >/tmp/out.log 2>&1 &
     OUT=$!
@@ -366,11 +349,12 @@ run() {
                 MODE="فارغ"; ACTIVE=""; ACTIVE_IDX=-1
             else
                 local f2
-                f2=$(standby_filter "$logo_idx" "$n2")
+                f2=$(standby_filter "$logo_idx" "$n2" "$n3")
                 ffmpeg -y -hide_banner -loglevel warning -nostdin \
                     "${inputs[@]}" -filter_complex "$f2" \
                     -map "[v]" -map ${audio_idx}:a:0 \
-                    -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 \
+                    -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p \
+                    -r $FPS -g $GOP \
                     -c:a aac -b:a 128k -ar 44100 -ac 2 \
                     -max_muxing_queue_size 4096 \
                     -f mpegts "$FIFO" >/tmp/prod.log 2>&1 &
@@ -430,11 +414,12 @@ run() {
                 wait $PROD 2>/dev/null
                 sleep 1
                 local f3
-                f3=$(standby_filter "$logo_idx" "$n2")
+                f3=$(standby_filter "$logo_idx" "$n2" "$n3")
                 ffmpeg -y -hide_banner -loglevel warning -nostdin \
                     "${inputs[@]}" -filter_complex "$f3" \
                     -map "[v]" -map ${audio_idx}:a:0 \
-                    -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g 60 \
+                    -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p \
+                    -r $FPS -g $GOP \
                     -c:a aac -b:a 128k -ar 44100 -ac 2 \
                     -max_muxing_queue_size 4096 \
                     -f mpegts "$FIFO" >/tmp/prod.log 2>&1 &

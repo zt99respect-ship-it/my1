@@ -6,8 +6,6 @@ on:
       restream_key:
         required: false
         default: 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69'
-  schedule:
-    - cron: '0 */6 * * *'
 
 permissions:
   actions: write
@@ -90,7 +88,7 @@ jobs:
       - name: PATH
         run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
-      - name: جدولة الرن التالي
+      - name: جدولة الرن التالي (بعد 5س30د)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

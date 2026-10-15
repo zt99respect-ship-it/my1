@@ -31,6 +31,10 @@ LOGO_CYCLE=7
 
 FPS=60
 GOP=120
+
+BG_TOP_R=10; BG_TOP_G=8;  BG_TOP_B=20
+BG_BOT_R=20; BG_BOT_G=6;  BG_BOT_B=10
+GLOW_R=255;  GLOW_G=120;  GLOW_B=20
 # ═════════════════════════════════════════════
 
 RESTREAM_KEY="${RESTREAM_KEY:-}"
@@ -58,14 +62,14 @@ IFS=',' read -r -a STREAMERS <<< "$STREAMERS_LIST"
 echo "🔢 عدد الستريمرز: ${#STREAMERS[@]}"
 
 # ═════════ توليد الخلفية ═════════
-cat > /tmp/make_bg.py <<'PYEOF'
+cat > /tmp/make_bg.py <<PYEOF
 from PIL import Image, ImageDraw, ImageFilter
 import sys
 
 W, H = 1920, 1080
 out = sys.argv[1]
-BG_TOP = (10, 8, 20)
-BG_BOT = (20, 6, 10)
+BG_TOP = ($BG_TOP_R, $BG_TOP_G, $BG_TOP_B)
+BG_BOT = ($BG_BOT_R, $BG_BOT_G, $BG_BOT_B)
 
 img = Image.new("RGB", (W, H))
 d = ImageDraw.Draw(img)
@@ -79,7 +83,7 @@ for y in range(H):
 img = img.convert("RGBA")
 glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 gd = ImageDraw.Draw(glow)
-gd.ellipse([W//2 - 700, H//2 - 500, W//2 + 700, H//2 + 500], fill=(255, 120, 20, 70))
+gd.ellipse([W//2 - 700, H//2 - 500, W//2 + 700, H//2 + 500], fill=($GLOW_R, $GLOW_G, $GLOW_B, 70))
 glow = glow.filter(ImageFilter.GaussianBlur(250))
 img = Image.alpha_composite(img, glow)
 

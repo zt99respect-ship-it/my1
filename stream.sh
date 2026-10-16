@@ -19,7 +19,7 @@ FS_S=58
 FS_L=22
 FS_NAME=22
 
-Y_LIST=60
+Y_LIST=490
 Y_TITLE=200
 Y_SUB=370
 
@@ -240,18 +240,18 @@ standby_filter() {
     local next="0:v"
     local idx=1
 
-    f="[0:v][${idx}:v]overlay=x=W-w-40:y=$Y_LIST[a]"
+    f="[0:v][${idx}:v]overlay=x=(W-w)/2:y=$Y_LIST[a]"
     next="a"; idx=$((idx+1))
 
-    f="$f;[${next}][${idx}:v]overlay=x=W-w-40:y=$((Y_LIST + 50))[b]"
+    f="$f;[${next}][${idx}:v]overlay=x=(W-w)/2:y=$((Y_LIST + 55))[b]"
     next="b"; idx=$((idx+1))
 
     if [ "$n2" = "1" ]; then
-        f="$f;[${next}][${idx}:v]overlay=x=W-w-40:y=$((Y_LIST + 50 + FS_NAME + 20))[c]"
+        f="$f;[${next}][${idx}:v]overlay=x=(W-w)/2:y=$((Y_LIST + 55 + FS_NAME + 15))[c]"
         next="c"; idx=$((idx+1))
     fi
     if [ "$n3" = "1" ]; then
-        f="$f;[${next}][${idx}:v]overlay=x=W-w-40:y=$((Y_LIST + 50 + (FS_NAME + 20) * 2))[d]"
+        f="$f;[${next}][${idx}:v]overlay=x=(W-w)/2:y=$((Y_LIST + 55 + (FS_NAME + 15) * 2))[d]"
         next="d"; idx=$((idx+1))
     fi
 

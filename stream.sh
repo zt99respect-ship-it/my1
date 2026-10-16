@@ -114,23 +114,7 @@ img.convert("RGB").save(out, "PNG")
 print(f"OK: {out}")
 PYEOF
 
-FONT_LOADER='
-def load_font(path, size, weight=700):
-    from PIL import ImageFont
-    font = ImageFont.truetype(path, size)
-    try:
-        axes = font.get_variation_axes()
-        if len(axes) == 1:
-            font.set_variation_by_axes([weight])
-        elif len(axes) == 2:
-            font.set_variation_by_axes([0, weight])
-        elif len(axes) == 3:
-            font.set_variation_by_axes([0, weight, 0])
-    except Exception:
-        pass
-    return font
-'
-
+# ═════════ سكربت رسم النص مع توهج متناسب ═════════
 cat > /tmp/render.py <<'PYEOF'
 import sys
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -177,7 +161,6 @@ gx = pad - bbox[0]
 gy = pad - bbox[1]
 
 glow_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-# توهج متناسب مع حجم الخط
 scale = pointsize / 100
 r1 = max(6, int(35 * scale))
 r2 = max(4, int(20 * scale))
@@ -355,16 +338,15 @@ run() {
     echo "✅ منتج الانتظار (PID: $PROD)"
 
     ffmpeg -y -hide_banner -loglevel warning -nostdin \
-        -thread_queue_size 1024 \
-        -fflags +genpts+igndts+discardcorrupt \
-        -analyzeduration 5000000 -probesize 2000000 \
-        -max_delay 2000000 \
+        -thread_queue_size 512 \
         -f mpegts -i "$FIFO" \
-        -c copy -max_muxing_queue_size 8192 \
+        -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -g $GOP -r $FPS \
+        -c:a aac -b:a 128k -ar 44100 -ac 2 \
+        -max_muxing_queue_size 4096 \
         -flvflags no_duration_filesize \
         -f flv "$RESTREAM_URL" >/tmp/out.log 2>&1 &
     OUT=$!
-    sleep 5
+    sleep 6
     if ! kill -0 $OUT 2>/dev/null; then
         echo "❌ المخرج:"; cat /tmp/out.log
         kill -9 $PROD 2>/dev/null; return 1

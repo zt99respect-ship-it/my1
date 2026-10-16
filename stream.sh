@@ -177,7 +177,12 @@ gx = pad - bbox[0]
 gy = pad - bbox[1]
 
 glow_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-for radius, alpha in [(35, 80), (20, 140), (10, 200)]:
+# توهج متناسب مع حجم الخط
+scale = pointsize / 100
+r1 = max(6, int(35 * scale))
+r2 = max(4, int(20 * scale))
+r3 = max(2, int(10 * scale))
+for radius, alpha in [(r1, 80), (r2, 140), (r3, 200)]:
     temp = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     td = ImageDraw.Draw(temp)
     td.text((gx, gy), text, font=font, fill=(r, g, b, alpha), direction=direction)

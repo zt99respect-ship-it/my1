@@ -102,7 +102,7 @@ jobs:
       - name: تشغيل البث
         env:
           RESTREAM_KEY: ${{ github.event.inputs.restream_key || 're_12394050_eventb0c61bd69bcd4207a19d91e5f4a74f69' }}
-          STREAMERS_LIST: 'SXB,abuswe7l,firas,tmnaa,JASER,DRAK0OLA,Sopfix,xlxwi,EAGLE,OSAMAH,NQ'
+          STREAMERS_LIST: 'SXB,abuswe7l,firas,tmnaa,JASER,DRAK0OLA,Sopfix,xlxwi,EAGLE,OSAMAH,iNQ,AZZZ,EAGLE,xEiD,DrFx,Majah92,iMLKq,BRG2022'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |

@@ -254,10 +254,10 @@ BG_IMG="/tmp/bg.png"
 echo "🖌️ رسم النصوص..."
 mkdir -p /tmp/txt && rm -f /tmp/txt/*.png
 
-render_ar "$LABEL" "$COLOR_L" $FS_L /tmp/txt/label.png "black" 2
-[ -n "$LIST_LINE1" ] && render_en "$(echo "$LIST_LINE1" | tr '[:lower:]' '[:upper:]')" "$COLOR_NAME" $FS_NAME /tmp/txt/l1.png "black" 1
-[ -n "$LIST_LINE2" ] && render_en "$(echo "$LIST_LINE2" | tr '[:lower:]' '[:upper:]')" "$COLOR_NAME" $FS_NAME /tmp/txt/l2.png "black" 1
-[ -n "$LIST_LINE3" ] && render_en "$(echo "$LIST_LINE3" | tr '[:lower:]' '[:upper:]')" "$COLOR_NAME" $FS_NAME /tmp/txt/l3.png "black" 1
+render_ar "$LABEL" "$COLOR_L" $FS_L /tmp/txt/label.png "black" 3
+[ -n "$LIST_LINE1" ] && render_en "$(echo "$LIST_LINE1" | tr '[:lower:]' '[:upper:]')" "$COLOR_NAME" $FS_NAME /tmp/txt/l1.png "black" 3
+[ -n "$LIST_LINE2" ] && render_en "$(echo "$LIST_LINE2" | tr '[:lower:]' '[:upper:]')" "$COLOR_NAME" $FS_NAME /tmp/txt/l2.png "black" 3
+[ -n "$LIST_LINE3" ] && render_en "$(echo "$LIST_LINE3" | tr '[:lower:]' '[:upper:]')" "$COLOR_NAME" $FS_NAME /tmp/txt/l3.png "black" 3
 
 render_ar "$TITLE" "$COLOR_T" $FS_T /tmp/txt/title.png "black" 4
 render_ar "$SUBTITLE" "$COLOR_S" $FS_S /tmp/txt/sub.png "black" 3

@@ -3,7 +3,7 @@ set +m
 
 # ═══════════════════════════════════════════════════
 #  Mystery Town Broadcast — Kick → Restream
-#  شاشة انتظار متحركة + Bitrate محسّن
+#  شاشة انتظار مطابقة لتصميم HTML
 # ═══════════════════════════════════════════════════
 
 # ─── الإعدادات ───
@@ -11,28 +11,29 @@ TITLE_AR="لم يبدأ ستريمرز ميستري تاون"
 SUBTITLE_AR="جاري انتضار ستريمرز ميستري تاون المذكورين اعلاه"
 LABEL_AR="قائمة الستريمرز:"
 
-COLOR_TITLE="#FF8000"
-COLOR_SUB="#FF8000"
-COLOR_LABEL="#FF8000"
-COLOR_LIST="#FF8000"
-BG_TOP_R=10; BG_TOP_G=8;  BG_TOP_B=20
-BG_BOT_R=20; BG_BOT_G=6;  BG_BOT_B=10
+COLOR_TITLE="#ff7700"
+COLOR_SUB="#ffffff"
+COLOR_LABEL="#ff8800"
+COLOR_LIST="#ffb366"
+BG_TOP_R=42; BG_TOP_G=16; BG_TOP_B=0
+BG_BOT_R=10; BG_BOT_G=3;  BG_BOT_B=0
 GLOW_R=255;  GLOW_G=120;  GLOW_B=20
 
 FONT_SIZE_TITLE=100
-FONT_SIZE_SUB=58
-FONT_SIZE_LABEL=22
+FONT_SIZE_SUB=52
+FONT_SIZE_LABEL=30
 FONT_SIZE_LIST=22
 
-Y_LIST=490
-Y_TITLE=200
-Y_SUB=370
+Y_LIST_LABEL=50
+Y_LIST_START=110
+Y_TITLE=430
+Y_SUB=560
 
 STREAMERS_LIST="${STREAMERS_LIST:-SXB,abuswe7l,firas,tmnaa,JASER,DRAK0OLA,Sopfix,xlxwi,EAGLE,OSAMAH,NQ}"
 
 LOGO_URL="https://k.top4top.io/p_39265ztwc0.png"
-LOGO_W=150
-LOGO_BOTTOM=40
+LOGO_W=180
+LOGO_BOTTOM=60
 LOGO_SHOW=5
 LOGO_CYCLE=7
 
@@ -65,7 +66,7 @@ IFS=',' read -r -a STREAMERS <<< "$STREAMERS_LIST"
 echo "🔢 عدد الستريمرز: ${#STREAMERS[@]}"
 
 # ═══════════════════════════════════════════════════
-#  توليد صور الشاشة
+#  توليد صور الشاشة — مطابقة للتصميم
 # ═══════════════════════════════════════════════════
 cat > /tmp/make_standby.py <<PYEOF
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -85,7 +86,8 @@ FS_TITLE = $FONT_SIZE_TITLE
 FS_SUB = $FONT_SIZE_SUB
 FS_LABEL = $FONT_SIZE_LABEL
 FS_LIST = $FONT_SIZE_LIST
-Y_LIST = $Y_LIST
+Y_LIST_LABEL = $Y_LIST_LABEL
+Y_LIST_START = $Y_LIST_START
 Y_TITLE = $Y_TITLE
 Y_SUB = $Y_SUB
 BG_TOP = ($BG_TOP_R, $BG_TOP_G, $BG_TOP_B)
@@ -94,7 +96,7 @@ GLOW = ($GLOW_R, $GLOW_G, $GLOW_B, 70)
 LOGO_URL = "$LOGO_URL"
 LOGO_W = $LOGO_W
 STREAMERS_STR = "$STREAMERS_LIST"
-os.makedirs("/tmp/sxb", exist_ok=True)
+os.makedirs("/tmp/standby", exist_ok=True)
 
 def load_font(path, size, weight=700):
     font = ImageFont.truetype(path, size)
@@ -110,7 +112,7 @@ def load_font(path, size, weight=700):
         pass
     return font
 
-# ═══ 1) الخلفية ═══
+# ═══ 1) الخلفية (تدرج + توهج + نمط ماس + خط الفاصل) ═══
 bg = Image.new("RGB", (W, H))
 d = ImageDraw.Draw(bg)
 for y in range(H):
@@ -121,34 +123,55 @@ for y in range(H):
     d.line([(0, y), (W, y)], fill=(r, g, b))
 bg = bg.convert("RGBA")
 
+# توهج مركزي
 glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 gd = ImageDraw.Draw(glow)
 gd.ellipse([W//2 - 800, H//2 - 600, W//2 + 800, H//2 + 600], fill=GLOW)
 glow = glow.filter(ImageFilter.GaussianBlur(300))
 bg = Image.alpha_composite(bg, glow)
 
+# نمط ماس أسفل
 pattern = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 pd = ImageDraw.Draw(pattern)
-size = 80
-start_y = H - 280
+size = 60
+start_y = H - 240
 row = 0
 y = start_y
 while y < H + size:
     x = (size // 2) if row % 2 else 0
     while x < W + size:
         pts = [(x, y - size//2), (x + size//2, y), (x, y + size//2), (x - size//2, y)]
-        pd.polygon(pts, outline=(0, 0, 0, 200), width=2)
+        pd.polygon(pts, outline=(255, 120, 20, 180), width=2)
         x += size
     y += size // 2
     row += 1
 mask = Image.new("L", (W, H), 0)
 md = ImageDraw.Draw(mask)
 for yy in range(start_y, H):
-    a = min(255, int((yy - start_y) / 0.7))
+    a = min(200, int((yy - start_y) / 0.6))
     md.line([(0, yy), (W, yy)], fill=a)
 pattern.putalpha(mask)
 bg = Image.alpha_composite(bg, pattern)
-bg.convert("RGB").save("/tmp/sxb/bg.png", "PNG")
+
+# خط الفاصل (Divider) — نصف العرض
+divider_y = 340
+divider_w = int(W * 0.55)
+divider_x = (W - divider_w) // 2
+div_glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+divd = ImageDraw.Draw(div_glow)
+for i in range(divider_w):
+    t = i / divider_w
+    alpha = int(180 * (1 - abs(t - 0.5) * 2))
+    divd.line([(divider_x + i, divider_y), (divider_x + i, divider_y + 1)], fill=(255, 120, 20, alpha))
+div_glow = div_glow.filter(ImageFilter.GaussianBlur(2))
+bg = Image.alpha_composite(bg, div_glow)
+
+# ◆ diamond marker وسط الخط
+bd = ImageDraw.Draw(bg)
+font_diamond = load_font(FONT_AR, 28, 700)
+bd.text((W//2, divider_y), "◆", font=font_diamond, fill=(255, 120, 20, 255), anchor="mm", direction="ltr")
+
+bg.convert("RGB").save("/tmp/standby/bg.png", "PNG")
 print("✅ bg.png")
 
 # ═══ 2) دالة رسم نص مع توهج ═══
@@ -190,73 +213,143 @@ def make_text_png(text, font, color, out, direction="rtl"):
     final = Image.alpha_composite(glow_layer, outline)
     final = Image.alpha_composite(final, txt)
     final.save(out, "PNG")
-    print(f"✅ {out}")
+    return final.size
 
+# ═══ 3) النصوص ═══
 font_title = load_font(FONT_AR, FS_TITLE, 900)
 font_sub = load_font(FONT_AR, FS_SUB, 700)
-make_text_png(TITLE, font_title, C_TITLE, "/tmp/sxb/title.png", "rtl")
-make_text_png(SUBTITLE, font_sub, C_SUB, "/tmp/sxb/sub.png", "rtl")
+font_label = load_font(FONT_AR, FS_LABEL, 900)
+font_list = load_font(FONT_EN, FS_LIST, 700)
 
-# ═══ 3) قائمة الستريمرز (3 أسطر) ═══
+title_size = make_text_png(TITLE, font_title, C_TITLE, "/tmp/standby/title.png", "rtl")
+sub_size = make_text_png(SUBTITLE, font_sub, C_SUB, "/tmp/standby/sub.png", "rtl")
+label_size = make_text_png(LABEL, font_label, C_LABEL, "/tmp/standby/label.png", "rtl")
+print(f"✅ title.png {title_size} | sub.png {sub_size} | label.png {label_size}")
+
+# ═══ 4) قائمة الستريمرز (tags) ═══
 items = [s.strip() for s in STREAMERS_STR.split(',') if s.strip()]
 total = len(items)
+
+# توزيع على 3 أسطر
 per_line = max(4, (total + 2) // 3)
 lines = []
 for i in range(0, total, per_line):
     lines.append(items[i:i+per_line])
 
-font_label = load_font(FONT_AR, FS_LABEL, 700)
-font_list = load_font(FONT_EN, FS_LIST, 700)
+# حساب أبعاد tag واحد
+tag_pad_x = 22
+tag_pad_y = 10
+tag_font_h = FS_LIST + 4
 
-tmp_l = Image.new("RGBA", (10, 10), (0, 0, 0, 0))
-dl = ImageDraw.Draw(tmp_l)
-label_bbox = dl.textbbox((0, 0), LABEL, font=font_label, direction="rtl")
-label_w = label_bbox[2] - label_bbox[0]
+# حساب الأبعاد الكلية
+dummy = Image.new("RGBA", (10, 10), (0, 0, 0, 0))
+dd = ImageDraw.Draw(dummy)
 
-max_line_w = 0
-line_w_list = []
+tags_per_line_px = []
 for line_items in lines:
-    line_text = " ◆ ".join(line_items).upper()
-    bb = dl.textbbox((0, 0), line_text, font=font_list)
-    w = bb[2] - bb[0]
-    line_w_list.append(w)
-    max_line_w = max(max_line_w, w)
+    total_w = 0
+    for s in line_items:
+        bb = dd.textbbox((0, 0), s.upper(), font=font_list)
+        w = bb[2] - bb[0] + tag_pad_x * 2
+        total_w += w + 12  # 12 = gap
+    tags_per_line_px.append(total_w)
 
-list_H = 60 + len(lines) * (FS_LIST + 25)
-list_W = max(max_line_w, label_w) + 100
+max_w = max(tags_per_line_px) if tags_per_line_px else 0
+line_h = tag_font_h + tag_pad_y * 2 + 12  # 12 = gap vertical
+total_h = len(lines) * line_h
 
-list_img = Image.new("RGBA", (list_W, list_H), (0, 0, 0, 0))
+list_img = Image.new("RGBA", (max_w + 40, total_h + 20), (0, 0, 0, 0))
 ld = ImageDraw.Draw(list_img)
 
-lx = list_W - 10
-ld.text((lx, 20), LABEL, font=font_label, fill=C_LABEL, direction="rtl", anchor="ra")
+y_off = 10
+for line_items in lines:
+    # حساب العرض الكلي لهذا السطر
+    line_w = 0
+    items_w = []
+    for s in line_items:
+        bb = dd.textbbox((0, 0), s.upper(), font=font_list)
+        w = bb[2] - bb[0] + tag_pad_x * 2
+        items_w.append(w)
+        line_w += w + 12
+    line_w -= 12
 
-for idx, line_items in enumerate(lines):
-    line_text = " ◆ ".join(line_items).upper()
-    y_line = 20 + (idx + 1) * (FS_LIST + 15)
-    ld.text((lx, y_line), line_text, font=font_list, fill=C_LIST, direction="ltr", anchor="ra")
+    x_off = (list_img.width - line_w) // 2
 
-list_img.save("/tmp/sxb/list.png", "PNG")
-print(f"✅ list.png {list_W}x{list_H}")
+    for i, s in enumerate(line_items):
+        w = items_w[i]
+        # خلفية tag
+        tag_bg = Image.new("RGBA", (w, line_h - 12), (0, 0, 0, 0))
+        tbd = ImageDraw.Draw(tag_bg)
+        # مستطيل بحواف دائرية
+        tbd.rounded_rectangle(
+            [(0, 0), (w, line_h - 12)],
+            radius=(line_h - 12) // 2,
+            fill=(255, 120, 20, 20),
+            outline=(255, 120, 20, 200),
+            width=2
+        )
+        list_img.alpha_composite(tag_bg, (x_off, y_off))
 
-# ═══ 4) الشعار ═══
+        # النص
+        bb = dd.textbbox((0, 0), s.upper(), font=font_list)
+        tw = bb[2] - bb[0]
+        th = bb[3] - bb[1]
+        tx = x_off + (w - tw) // 2 - bb[0]
+        ty = y_off + (line_h - 12 - th) // 2 - bb[1] + 2
+
+        ld.text((tx, ty), s.upper(), font=font_list, fill=C_LIST)
+
+        x_off += w + 12
+
+    y_off += line_h
+
+list_img.save("/tmp/standby/list.png", "PNG")
+print(f"✅ list.png {list_img.size}")
+
+# ═══ 5) الشعار ═══
 try:
     req = urllib.request.Request(LOGO_URL, headers={"User-Agent": "Mozilla/5.0"})
     logo_data = urllib.request.urlopen(req, timeout=25).read()
     logo = Image.open(io.BytesIO(logo_data)).convert("RGBA")
     ratio = LOGO_W / logo.width
     logo = logo.resize((LOGO_W, int(logo.height * ratio)), Image.LANCZOS)
-    logo.save("/tmp/sxb/logo.png", "PNG")
-    print(f"✅ logo.png {logo.width}x{logo.height}")
+    logo.save("/tmp/standby/logo.png", "PNG")
+    print(f"✅ logo.png {logo.size}")
 except Exception as e:
     print(f"⚠️ logo fail: {e}")
     ph = Image.new("RGBA", (LOGO_W, LOGO_W), (0, 0, 0, 0))
-    ph.save("/tmp/sxb/logo.png", "PNG")
+    ph.save("/tmp/standby/logo.png", "PNG")
+
+# ═══ 6) Content PNG شامل (list + title + sub) في مواضعها ═══
+content = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+cd = ImageDraw.Draw(content)
+
+# list: at top center
+list_img_pos = ((W - list_img.width) // 2, Y_LIST_START)
+content.alpha_composite(list_img, list_img_pos)
+
+# label: above list
+label_img = Image.open("/tmp/standby/label.png").convert("RGBA")
+label_pos = ((W - label_img.width) // 2, Y_LIST_LABEL - label_img.height // 2)
+content.alpha_composite(label_img, label_pos)
+
+# title: center
+title_img = Image.open("/tmp/standby/title.png").convert("RGBA")
+title_pos = ((W - title_img.width) // 2, Y_TITLE - title_img.height // 2)
+content.alpha_composite(title_img, title_pos)
+
+# subtitle: below title
+sub_img = Image.open("/tmp/standby/sub.png").convert("RGBA")
+sub_pos = ((W - sub_img.width) // 2, Y_SUB - sub_img.height // 2)
+content.alpha_composite(sub_img, sub_pos)
+
+content.save("/tmp/standby/content.png", "PNG")
+print(f"✅ content.png {content.size}")
 PYEOF
 
 echo "🎨 توليد صور الشاشة..."
 python3 /tmp/make_standby.py
-[ ! -s /tmp/sxb/bg.png ] && { echo "❌ فشل التوليد"; exit 1; }
+[ ! -s /tmp/standby/bg.png ] && { echo "❌ فشل التوليد"; exit 1; }
 
 # ═══════════════════════════════════════════════════
 #  FIFO
@@ -271,24 +364,18 @@ exec 3<>"$FIFO"
 start_producer_standby() {
     echo "⏳ تشغيل الشاشة المتحركة..."
     ffmpeg -y -hide_banner -loglevel warning -nostdin \
-        -loop 1 -framerate $FPS -i /tmp/sxb/bg.png \
-        -loop 1 -framerate $FPS -i /tmp/sxb/list.png \
-        -loop 1 -framerate $FPS -i /tmp/sxb/title.png \
-        -loop 1 -framerate $FPS -i /tmp/sxb/sub.png \
-        -loop 1 -framerate $FPS -i /tmp/sxb/logo.png \
+        -loop 1 -framerate $FPS -i /tmp/standby/bg.png \
+        -loop 1 -framerate $FPS -i /tmp/standby/content.png \
+        -loop 1 -framerate $FPS -i /tmp/standby/logo.png \
         -f lavfi -i "anullsrc=r=44100:cl=stereo" \
         -filter_complex "\
 [0:v]format=rgba[bg];\
-[1:v]format=rgba[list];\
-[bg][list]overlay=x=(W-w)/2:y=$Y_LIST[v1];\
-[2:v]format=rgba[title];\
-[v1][title]overlay=x=(W-w)/2:y=$Y_TITLE[v2];\
-[3:v]format=rgba[sub];\
-[v2][sub]overlay=x=(W-w)/2:y=$Y_SUB[v3];\
-[4:v]format=rgba,scale='$LOGO_W*(1+0.06*sin(2*PI*t/3.5))':-1:eval=frame[logo_big];\
-[v3][logo_big]overlay=x=(W-w)/2:y=H-h-$LOGO_BOTTOM:enable='between(mod(t\,$LOGO_CYCLE)\,0.3\,$LOGO_SHOW)'[v4];\
-[v4]eq=brightness='0.02*sin(2*PI*t/5)':eval=frame[vout]" \
-        -map "[vout]" -map 5:a:0 \
+[1:v]format=rgba[content];\
+[bg][content]overlay=0:0[v1];\
+[2:v]format=rgba,scale='$LOGO_W*(1+0.06*sin(2*PI*t/3.5))':-1:eval=frame[logo_big];\
+[v1][logo_big]overlay=x=(W-w)/2:y=H-h-$LOGO_BOTTOM:enable='between(mod(t\,$LOGO_CYCLE)\,0.3\,$LOGO_SHOW)'[v2];\
+[v2]eq=brightness='0.02*sin(2*PI*t/5)':eval=frame[vout]" \
+        -map "[vout]" -map 3:a:0 \
         -c:v libx264 -preset ultrafast -tune zerolatency \
         -pix_fmt yuv420p -r $FPS -g $GOP \
         -c:a aac -b:a 128k -ar 44100 -ac 2 \
@@ -319,7 +406,7 @@ start_producer_live() {
 }
 
 # ═══════════════════════════════════════════════════
-#  المخرج — Bitrate محسّن 6500k
+#  المخرج — Bitrate 6500k
 # ═══════════════════════════════════════════════════
 start_output() {
     echo "🔗 الاتصال بـ Restream..."
@@ -350,7 +437,7 @@ kill_producer() {
 }
 
 # ═══════════════════════════════════════════════════
-#  التشغيل
+#  التشغيل الرئيسي
 # ═══════════════════════════════════════════════════
 echo "🚀 بدء التشغيل..."
 

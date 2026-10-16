@@ -9,10 +9,10 @@ TITLE="لم يبدأ ستريمرز ميستري تاون"
 SUBTITLE="جاري انتضار ستريمرز ميستري تاون المذكورين اعلاه"
 LABEL="قائمة الستريمرز:"
 
-COLOR_T="#ff7700"
-COLOR_S="#ffffff"
-COLOR_L="#ff8800"
-COLOR_NAME="#ffb366"
+COLOR_T="#F68804"
+COLOR_S="#F68804"
+COLOR_L="#F70909"
+COLOR_NAME="#FF8000"
 
 FS_T=100
 FS_S=58
